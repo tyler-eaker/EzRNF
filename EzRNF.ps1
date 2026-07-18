@@ -1,10 +1,11 @@
-﻿﻿# EzRNF Version 1.2
-Add-Type -AssemblyName System.Windows.Forms
+﻿Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
 
-$currentVersion = "1.2"
+$currentVersion = "1.3"
 $rawBase        = "https://raw.githubusercontent.com/tyler-eaker/EzRNF/main"
 $scriptPath     = $MyInvocation.MyCommand.Path
+
+Write-Host "EzRNF Version $currentVersion"
 
 try {
     $latestVersion = (Invoke-WebRequest -Uri "$rawBase/version.txt" -UseBasicParsing -TimeoutSec 5).Content.Trim()
