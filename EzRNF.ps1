@@ -1,4 +1,51 @@
-﻿Add-Type -AssemblyName System.Windows.Forms
+﻿# EzRNF Version 1.0
+
+$script:currentVersion = "1.0"
+$script:rawBase        = "https://raw.githubusercontent.com/tyler-eaker/EzRNF/main"
+$script:scriptPath     = $MyInvocation.MyCommand.Path
+
+function Check-ForUpdate {
+    try {
+        $latestVersion = (Invoke-WebRequest -Uri "$script:rawBase/version.txt" -UseBasicParsing -TimeoutSec 5).Content.Trim()
+
+        if ([version]$latestVersion -gt [version]$script:currentVersion) {
+            Add-Type -AssemblyName System.Windows.Forms
+            $result = [System.Windows.Forms.MessageBox]::Show(
+                "A new version of EzRNF is available ($latestVersion).`nWould you like to update now?",
+                "Update Available",
+                [System.Windows.Forms.MessageBoxButtons]::YesNo,
+                [System.Windows.Forms.MessageBoxIcon]::Information
+            )
+
+            if ($result -eq [System.Windows.Forms.DialogResult]::Yes) {
+                $latestScript = (Invoke-WebRequest -Uri "$script:rawBase/EzRNF.ps1" -UseBasicParsing -TimeoutSec 30).Content
+
+                if ([string]::IsNullOrWhiteSpace($latestScript)) {
+                    [System.Windows.Forms.MessageBox]::Show("Update download failed. Please try again later.", "Update Failed", 0, 16) | Out-Null
+                    return
+                }
+
+                [System.IO.File]::WriteAllText($script:scriptPath, $latestScript, [System.Text.Encoding]::UTF8)
+
+                [System.Windows.Forms.MessageBox]::Show(
+                    "EzRNF has been updated to version $latestVersion.`nThe application will now restart.",
+                    "Update Complete",
+                    [System.Windows.Forms.MessageBoxButtons]::OK,
+                    [System.Windows.Forms.MessageBoxIcon]::Information
+                ) | Out-Null
+
+                Start-Process "powershell.exe" -ArgumentList "-ExecutionPolicy Bypass -File `"$script:scriptPath`""
+                exit
+            }
+        }
+    } catch {
+        # Silently skip update check if no internet or repo unreachable
+    }
+}
+
+Check-ForUpdate
+
+Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
 
  $script:Config = @{
