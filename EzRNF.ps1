@@ -1,8 +1,8 @@
-﻿# EzRNF Version 1.0
+﻿# EzRNF Version 1.1
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
 
-$currentVersion = "1.0"
+$currentVersion = "1.1"
 $rawBase        = "https://raw.githubusercontent.com/tyler-eaker/EzRNF/main"
 $scriptPath     = $MyInvocation.MyCommand.Path
 
@@ -181,7 +181,7 @@ $script:strings = @{
         MenuBatch5      = "5 files per source"
         MenuTools       = "Tools"
         MenuHistory     = "Wave History"
-        MenuPlink       = "Check for plink.exe"
+        MenuPlink       = "Check for plink"
         MenuClearCreds  = "Clear Saved Credentials"
         MenuLang        = "Language"
         MenuInfo        = "Info"
