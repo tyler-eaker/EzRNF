@@ -1,6 +1,6 @@
-﻿# EzRNF Version 1.0
+﻿# EzRNF Version 1.1
 
-$script:currentVersion = "1.0"
+$script:currentVersion = "1.1"
 $script:rawBase        = "https://raw.githubusercontent.com/tyler-eaker/EzRNF/main"
 $script:scriptPath     = $MyInvocation.MyCommand.Path
 
@@ -193,7 +193,7 @@ $script:strings = @{
         MenuBatch5      = "5 files per source"
         MenuTools       = "Tools"
         MenuHistory     = "Wave History"
-        MenuPlink       = "Check for plink"
+        MenuPlink       = "Check for plink.exe"
         MenuClearCreds  = "Clear Saved Credentials"
         MenuLang        = "Language"
         MenuInfo        = "Info"
