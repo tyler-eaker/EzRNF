@@ -1,7 +1,7 @@
 ﻿Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
 
-$currentVersion = "1.3"
+$currentVersion = "1.4"
 $rawBase        = "https://raw.githubusercontent.com/tyler-eaker/EzRNF/main"
 $scriptPath     = $MyInvocation.MyCommand.Path
 
@@ -596,7 +596,7 @@ VALUES
         }
 
         $targetLookup = @{}
-        foreach ($order in $parsedOrders) { if (-not $existingOrders.ContainsKey($order.FullOrder)) { $targetLookup[$order.FullOrder] = $true } }
+        foreach ($order in $parsedOrders) { if (-not $existingOrders.ContainsKey($order.Base)) { $targetLookup[$order.Base] = $true } }
 
         $csvDataMap = @{}
 
@@ -630,8 +630,9 @@ VALUES
                                 $cols = $line -split ','
                                 
                                 $orderRaw = if ($idxOrder -ne $null -and $idxOrder -lt $cols.Length) { $cols[$idxOrder].Trim('"') } else { "" }
+                                $orderBase = if ($orderRaw -match '^(\d{8})') { $Matches[1] } else { "" }
                                 $orderFull = if ($orderRaw -match '^(\d{8})$') { "$orderRaw-00" } elseif ($orderRaw -match '^(\d{8})[-_]?(\d{2})$') { "$($Matches[1])-$($Matches[2])" } else { $orderRaw }
-                                if ($targetLookup.ContainsKey($orderFull)) {
+                                if ($orderBase -ne "" -and $targetLookup.ContainsKey($orderBase)) {
                                     $isHazmat = if ($idxHazmat -ne $null -and $idxHazmat -lt $cols.Length) { $cols[$idxHazmat].Trim('"') -match "Y|1|True" } else { $false }
                                     $isGift   = if ($idxGift -ne $null -and $idxGift -lt $cols.Length) { $cols[$idxGift].Trim('"') -match "Y|1|True" } else { $false }
 
@@ -686,7 +687,7 @@ VALUES
                                     $orderBase = $Matches[1]
                                     $orderSuf = if ($Matches[2]) { $Matches[2] } else { "00" }
                                     $orderFull = "$orderBase-$orderSuf"
-                                    if ($targetLookup.ContainsKey($orderFull)) {
+                                    if ($targetLookup.ContainsKey($orderBase)) {
                                         $addrNo = if ($idxAddrNo -ne $null -and $idxAddrNo -lt $cols.Length) { $cols[$idxAddrNo].Trim('"') } else { "" }
                                         $ctry = if ($idxCtry -ne $null -and $idxCtry -lt $cols.Length) { $cols[$idxCtry].Trim('"').ToUpper() } else { "" }
                                         if (-not $csvDataMap.ContainsKey($orderBase)) {
@@ -766,7 +767,7 @@ VALUES
                 continue
             }
 
-            $localData = $csvDataMap[$fullOrder]
+            $localData = $csvDataMap[$base]
             if ($null -eq $localData) { $tableData.Add([PSCustomObject]@{ Order=$order.FullOrder; Status="RNF"; Loc="--"; Carrier="--"; OD="--"; Action="Manual Wave"; IsNone=1 }); continue }
 
             $displayLoc = $localData.Loc
@@ -917,7 +918,7 @@ VALUES
 }
 
  $mainForm = New-Object System.Windows.Forms.Form
- $mainForm.Text = "EZ-RNF"
+ $mainForm.Text = "EzRNF"
  $mainForm.ClientSize = New-Object System.Drawing.Size(800, 565)
  $mainForm.StartPosition = "CenterScreen"
  $mainForm.FormBorderStyle = "Sizable"
