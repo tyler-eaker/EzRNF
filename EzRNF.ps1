@@ -1,52 +1,40 @@
-﻿# EzRNF Version 1.1
+﻿# EzRNF Version 1.0
+Add-Type -AssemblyName System.Windows.Forms
+Add-Type -AssemblyName System.Drawing
 
-$script:currentVersion = "1.1"
-$script:rawBase        = "https://raw.githubusercontent.com/tyler-eaker/EzRNF/main"
-$script:scriptPath     = $MyInvocation.MyCommand.Path
+$currentVersion = "1.0"
+$rawBase        = "https://raw.githubusercontent.com/tyler-eaker/EzRNF/main"
+$scriptPath     = $MyInvocation.MyCommand.Path
 
-function Check-ForUpdate {
-    try {
-        $latestVersion = (Invoke-WebRequest -Uri "$script:rawBase/version.txt" -UseBasicParsing -TimeoutSec 5).Content.Trim()
-
-        if ([version]$latestVersion -gt [version]$script:currentVersion) {
-            Add-Type -AssemblyName System.Windows.Forms
-            $result = [System.Windows.Forms.MessageBox]::Show(
-                "A new version of EzRNF is available ($latestVersion).`nWould you like to update now?",
-                "Update Available",
-                [System.Windows.Forms.MessageBoxButtons]::YesNo,
-                [System.Windows.Forms.MessageBoxIcon]::Information
-            )
-
-            if ($result -eq [System.Windows.Forms.DialogResult]::Yes) {
-                $latestScript = (Invoke-WebRequest -Uri "$script:rawBase/EzRNF.ps1" -UseBasicParsing -TimeoutSec 30).Content
-
-                if ([string]::IsNullOrWhiteSpace($latestScript)) {
-                    [System.Windows.Forms.MessageBox]::Show("Update download failed. Please try again later.", "Update Failed", 0, 16) | Out-Null
-                    return
-                }
-
-                [System.IO.File]::WriteAllText($script:scriptPath, $latestScript, [System.Text.Encoding]::UTF8)
-
+try {
+    $latestVersion = (Invoke-WebRequest -Uri "$rawBase/version.txt" -UseBasicParsing -TimeoutSec 5).Content.Trim()
+    if ([version]$latestVersion -gt [version]$currentVersion) {
+        $result = [System.Windows.Forms.MessageBox]::Show(
+            "A new version of EzRNF is available ($latestVersion).`nWould you like to update now?",
+            "Update Available",
+            [System.Windows.Forms.MessageBoxButtons]::YesNo,
+            [System.Windows.Forms.MessageBoxIcon]::Information
+        )
+        if ($result -eq [System.Windows.Forms.DialogResult]::Yes) {
+            $latestScript = (Invoke-WebRequest -Uri "$rawBase/EzRNF.ps1" -UseBasicParsing -TimeoutSec 30).Content
+            if (-not [string]::IsNullOrWhiteSpace($latestScript)) {
+                [System.IO.File]::WriteAllText($scriptPath, $latestScript, [System.Text.Encoding]::UTF8)
                 [System.Windows.Forms.MessageBox]::Show(
-                    "EzRNF has been updated to version $latestVersion.`nThe application will now restart.",
+                    "Updated to version $latestVersion.`nThe application will now restart.",
                     "Update Complete",
                     [System.Windows.Forms.MessageBoxButtons]::OK,
                     [System.Windows.Forms.MessageBoxIcon]::Information
                 ) | Out-Null
-
-                Start-Process "powershell.exe" -ArgumentList "-ExecutionPolicy Bypass -File `"$script:scriptPath`""
+                Start-Process "powershell.exe" -ArgumentList "-ExecutionPolicy Bypass -File `"$scriptPath`""
                 exit
+            } else {
+                [System.Windows.Forms.MessageBox]::Show("Download failed. Please try again later.", "Update Failed", 0, 16) | Out-Null
             }
         }
-    } catch {
-        # Silently skip update check if no internet or repo unreachable
     }
+} catch {
+    # No internet or repo unreachable - continue normally
 }
-
-Check-ForUpdate
-
-Add-Type -AssemblyName System.Windows.Forms
-Add-Type -AssemblyName System.Drawing
 
  $script:Config = @{
     SshHost         = "salt.colorimageinc.com"
