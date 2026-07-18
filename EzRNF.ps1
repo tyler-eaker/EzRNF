@@ -1,8 +1,8 @@
-﻿# EzRNF Version 1.1
+﻿﻿# EzRNF Version 1.2
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
 
-$currentVersion = "1.1"
+$currentVersion = "1.2"
 $rawBase        = "https://raw.githubusercontent.com/tyler-eaker/EzRNF/main"
 $scriptPath     = $MyInvocation.MyCommand.Path
 
@@ -18,7 +18,7 @@ try {
         if ($result -eq [System.Windows.Forms.DialogResult]::Yes) {
             $latestScript = (Invoke-WebRequest -Uri "$rawBase/EzRNF.ps1" -UseBasicParsing -TimeoutSec 30).Content
             if (-not [string]::IsNullOrWhiteSpace($latestScript)) {
-                [System.IO.File]::WriteAllText($scriptPath, $latestScript, [System.Text.Encoding]::UTF8)
+                [System.IO.File]::WriteAllText($scriptPath, $latestScript, (New-Object System.Text.UTF8Encoding $false))
                 [System.Windows.Forms.MessageBox]::Show(
                     "Updated to version $latestVersion.`nThe application will now restart.",
                     "Update Complete",
