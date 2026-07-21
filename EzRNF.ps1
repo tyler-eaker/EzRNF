@@ -1,40 +1,47 @@
 ﻿Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
 
-$currentVersion = "1.4"
-$rawBase        = "https://raw.githubusercontent.com/tyler-eaker/EzRNF/main"
-$scriptPath     = $MyInvocation.MyCommand.Path
+ $currentVersion = "1.5"
+ $rawBase        = "https://raw.githubusercontent.com/tyler-eaker/EzRNF/main"
+ $scriptPath     = $MyInvocation.MyCommand.Path
 
 Write-Host "EzRNF Version $currentVersion"
 
-try {
-    $latestVersion = (Invoke-WebRequest -Uri "$rawBase/version.txt" -UseBasicParsing -TimeoutSec 5).Content.Trim()
-    if ([version]$latestVersion -gt [version]$currentVersion) {
-        $result = [System.Windows.Forms.MessageBox]::Show(
-            "A new version of EzRNF is available ($latestVersion).`nWould you like to update now?",
-            "Update Available",
-            [System.Windows.Forms.MessageBoxButtons]::YesNo,
-            [System.Windows.Forms.MessageBoxIcon]::Information
-        )
-        if ($result -eq [System.Windows.Forms.DialogResult]::Yes) {
-            $latestScript = (Invoke-WebRequest -Uri "$rawBase/EzRNF.ps1" -UseBasicParsing -TimeoutSec 30).Content
-            if (-not [string]::IsNullOrWhiteSpace($latestScript)) {
-                [System.IO.File]::WriteAllText($scriptPath, $latestScript, (New-Object System.Text.UTF8Encoding $false))
-                [System.Windows.Forms.MessageBox]::Show(
-                    "Updated to version $latestVersion.`nThe application will now restart.",
-                    "Update Complete",
-                    [System.Windows.Forms.MessageBoxButtons]::OK,
-                    [System.Windows.Forms.MessageBoxIcon]::Information
-                ) | Out-Null
-                Start-Process "powershell.exe" -ArgumentList "-ExecutionPolicy Bypass -File `"$scriptPath`""
-                exit
-            } else {
-                [System.Windows.Forms.MessageBox]::Show("Download failed. Please try again later.", "Update Failed", 0, 16) | Out-Null
+function Invoke-UpdateCheck {
+    param([switch]$ManualCheck)
+    try {
+        $latestVersion = (Invoke-WebRequest -Uri "$rawBase/version.txt" -UseBasicParsing -TimeoutSec 5).Content.Trim()
+        if ([version]$latestVersion -gt [version]$currentVersion) {
+            $result = [System.Windows.Forms.MessageBox]::Show(
+                "A new version of EzRNF is available ($latestVersion).`nWould you like to update now?",
+                "Update Available",
+                [System.Windows.Forms.MessageBoxButtons]::YesNo,
+                [System.Windows.Forms.MessageBoxIcon]::Information
+            )
+            if ($result -eq [System.Windows.Forms.DialogResult]::Yes) {
+                $latestScript = (Invoke-WebRequest -Uri "$rawBase/EzRNF.ps1" -UseBasicParsing -TimeoutSec 30).Content
+                if (-not [string]::IsNullOrWhiteSpace($latestScript)) {
+                    [System.IO.File]::WriteAllText($scriptPath, $latestScript, (New-Object System.Text.UTF8Encoding $false))
+                    [System.Windows.Forms.MessageBox]::Show(
+                        "Updated to version $latestVersion.`nThe application will now restart.",
+                        "Update Complete",
+                        [System.Windows.Forms.MessageBoxButtons]::OK,
+                        [System.Windows.Forms.MessageBoxIcon]::Information
+                    ) | Out-Null
+                    Start-Process "powershell.exe" -ArgumentList "-ExecutionPolicy Bypass -File `"$scriptPath`""
+                    $mainForm.Close()
+                } else {
+                    [System.Windows.Forms.MessageBox]::Show("Download failed. Please try again later.", "Update Failed", 0, 16) | Out-Null
+                }
             }
+        } elseif ($ManualCheck) {
+            [System.Windows.Forms.MessageBox]::Show("You are running the latest version ($currentVersion).", "Up to Date", 0, 64) | Out-Null
+        }
+    } catch {
+        if ($ManualCheck) {
+            [System.Windows.Forms.MessageBox]::Show("Could not check for updates. Please check your internet connection.", "Update Check Failed", 0, 16) | Out-Null
         }
     }
-} catch {
-    # No internet or repo unreachable - continue normally
 }
 
  $script:Config = @{
@@ -143,7 +150,7 @@ function Write-ErrorLog {
     } catch { }
 }
 
-$script:strings = @{
+ $script:strings = @{
     EN = @{
         LblUser         = "SSH Username:"
         LblSshPass      = "SSH Password:"
@@ -182,6 +189,7 @@ $script:strings = @{
         MenuBatch5      = "5 files per source"
         MenuTools       = "Tools"
         MenuHistory     = "Wave History"
+        MenuCheckUpdate = "Check for Update"
         MenuPlink       = "Check for plink"
         MenuClearCreds  = "Clear Saved Credentials"
         MenuLang        = "Language"
@@ -226,6 +234,7 @@ $script:strings = @{
         MenuBatch5      = "5 archivos por fuente"
         MenuTools       = "Herramientas"
         MenuHistory     = "Historial de Waves"
+        MenuCheckUpdate = "Buscar Actualizaciones"
         MenuPlink       = "Verificar plink"
         MenuClearCreds  = "Borrar Credenciales"
         MenuLang        = "Idioma"
@@ -274,6 +283,7 @@ function Set-Language {
     $menuBatch5.Text           = $s.MenuBatch5
     $menuTools.Text            = $s.MenuTools
     $menuWaveHistory.Text      = $s.MenuHistory
+    $menuCheckUpdate.Text      = $s.MenuCheckUpdate
     $menuCheckPlink.Text       = $s.MenuPlink
     $menuClearCreds.Text       = $s.MenuClearCreds
     $menuLang.Text             = $s.MenuLang
@@ -596,7 +606,7 @@ VALUES
         }
 
         $targetLookup = @{}
-        foreach ($order in $parsedOrders) { if (-not $existingOrders.ContainsKey($order.Base)) { $targetLookup[$order.Base] = $true } }
+        foreach ($order in $parsedOrders) { if (-not $existingOrders.ContainsKey($order.FullOrder)) { $targetLookup[$order.FullOrder] = $true } }
 
         $csvDataMap = @{}
 
@@ -630,15 +640,14 @@ VALUES
                                 $cols = $line -split ','
                                 
                                 $orderRaw = if ($idxOrder -ne $null -and $idxOrder -lt $cols.Length) { $cols[$idxOrder].Trim('"') } else { "" }
-                                $orderBase = if ($orderRaw -match '^(\d{8})') { $Matches[1] } else { "" }
                                 $orderFull = if ($orderRaw -match '^(\d{8})$') { "$orderRaw-00" } elseif ($orderRaw -match '^(\d{8})[-_]?(\d{2})$') { "$($Matches[1])-$($Matches[2])" } else { $orderRaw }
-                                if ($orderBase -ne "" -and $targetLookup.ContainsKey($orderBase)) {
+                                if ($targetLookup.ContainsKey($orderFull)) {
                                     $isHazmat = if ($idxHazmat -ne $null -and $idxHazmat -lt $cols.Length) { $cols[$idxHazmat].Trim('"') -match "Y|1|True" } else { $false }
                                     $isGift   = if ($idxGift -ne $null -and $idxGift -lt $cols.Length) { $cols[$idxGift].Trim('"') -match "Y|1|True" } else { $false }
 
-                                    if (-not $csvDataMap.ContainsKey($orderBase)) {
+                                    if (-not $csvDataMap.ContainsKey($orderFull)) {
                                         $wh = if ($idxWH -ne $null -and $idxWH -lt $cols.Length) { $cols[$idxWH].Trim('"').ToLower() } else { "" }
-                                        $csvDataMap[$orderBase] = [PSCustomObject]@{
+                                        $csvDataMap[$orderFull] = [PSCustomObject]@{
                                             Carrier   = if ($idxCarrier -ne $null -and $idxCarrier -lt $cols.Length) { $cols[$idxCarrier].Trim('"') } else { "" }
                                             OrderCode = if ($idxOrderCode -ne $null -and $idxOrderCode -lt $cols.Length) { $cols[$idxOrderCode].Trim('"') } else { "" }
                                             IsHazmat  = $isHazmat; IsGift = $isGift
@@ -648,8 +657,8 @@ VALUES
                                             Ctry      = ""
                                         }
                                         $foundInThisFile++
-                                    } elseif ($csvDataMap[$orderBase].Source -eq "intake" -and ($isHazmat -or $isGift)) {
-                                        $csvDataMap[$orderBase].IsHazmat = $isHazmat; $csvDataMap[$orderBase].IsGift = $isGift
+                                    } elseif ($csvDataMap[$orderFull].Source -eq "intake" -and ($isHazmat -or $isGift)) {
+                                        $csvDataMap[$orderFull].IsHazmat = $isHazmat; $csvDataMap[$orderFull].IsGift = $isGift
                                     }
                                 }
                             }
@@ -687,13 +696,13 @@ VALUES
                                     $orderBase = $Matches[1]
                                     $orderSuf = if ($Matches[2]) { $Matches[2] } else { "00" }
                                     $orderFull = "$orderBase-$orderSuf"
-                                    if ($targetLookup.ContainsKey($orderBase)) {
+                                    if ($targetLookup.ContainsKey($orderFull)) {
                                         $addrNo = if ($idxAddrNo -ne $null -and $idxAddrNo -lt $cols.Length) { $cols[$idxAddrNo].Trim('"') } else { "" }
                                         $ctry = if ($idxCtry -ne $null -and $idxCtry -lt $cols.Length) { $cols[$idxCtry].Trim('"').ToUpper() } else { "" }
-                                        if (-not $csvDataMap.ContainsKey($orderBase)) {
+                                        if (-not $csvDataMap.ContainsKey($orderFull)) {
                                             $wh = if ($idxWH -ne $null -and $idxWH -lt $cols.Length) { $cols[$idxWH].Trim('"').ToUpper() } else { "" }
                                             $intakeCarrier = if ($idxCarrier -ne $null -and $idxCarrier -lt $cols.Length) { $cols[$idxCarrier].Trim('"') } else { "" }
-                                            $csvDataMap[$orderBase] = [PSCustomObject]@{
+                                            $csvDataMap[$orderFull] = [PSCustomObject]@{
                                                 Carrier   = $intakeCarrier
                                                 OrderCode = if ($idxOrderCode -ne $null -and $idxOrderCode -lt $cols.Length) { $cols[$idxOrderCode].Trim('"') } else { "" }
                                                 IsHazmat  = $false; IsGift = $false
@@ -701,9 +710,9 @@ VALUES
                                                 Ctry      = $ctry; Source = "intake"; CustNum = $addrNo
                                             }
                                             $foundInThisFile++
-                                        } elseif ($csvDataMap[$orderBase].OrderCode -match "(?i)AYStoreF" -and $csvDataMap[$orderBase].CustNum -notmatch "[A-Za-z]") {
-                                            $csvDataMap[$orderBase].Ctry = $ctry
-                                            if ($addrNo -match "[A-Za-z]") { $csvDataMap[$orderBase].CustNum = $addrNo; $foundInThisFile++ }
+                                        } elseif ($csvDataMap[$orderFull].OrderCode -match "(?i)AYStoreF" -and $csvDataMap[$orderFull].CustNum -notmatch "[A-Za-z]") {
+                                            $csvDataMap[$orderFull].Ctry = $ctry
+                                            if ($addrNo -match "[A-Za-z]") { $csvDataMap[$orderFull].CustNum = $addrNo; $foundInThisFile++ }
                                         }
                                     }
                                 }
@@ -767,7 +776,7 @@ VALUES
                 continue
             }
 
-            $localData = $csvDataMap[$base]
+            $localData = $csvDataMap[$fullOrder]
             if ($null -eq $localData) { $tableData.Add([PSCustomObject]@{ Order=$order.FullOrder; Status="RNF"; Loc="--"; Carrier="--"; OD="--"; Action="Manual Wave"; IsNone=1 }); continue }
 
             $displayLoc = $localData.Loc
@@ -976,9 +985,10 @@ VALUES
 
  $menuTools        = New-Object System.Windows.Forms.ToolStripMenuItem("Tools")
  $menuWaveHistory  = New-Object System.Windows.Forms.ToolStripMenuItem("Wave History")
+ $menuCheckUpdate  = New-Object System.Windows.Forms.ToolStripMenuItem("Check for Update")
  $menuCheckPlink   = New-Object System.Windows.Forms.ToolStripMenuItem("Check for plink")
  $menuClearCreds   = New-Object System.Windows.Forms.ToolStripMenuItem("Clear Saved Credentials")
- $menuTools.DropDownItems.AddRange(@($menuWaveHistory, (New-Object System.Windows.Forms.ToolStripSeparator), $menuCheckPlink, $menuClearCreds))
+ $menuTools.DropDownItems.AddRange(@($menuWaveHistory, $menuCheckUpdate, (New-Object System.Windows.Forms.ToolStripSeparator), $menuCheckPlink, $menuClearCreds))
 
  $menuLang   = New-Object System.Windows.Forms.ToolStripMenuItem("Language")
  $menuLangEN = New-Object System.Windows.Forms.ToolStripMenuItem("English")
@@ -1177,6 +1187,8 @@ function Set-BatchSizeChecks {
     $histForm.ShowDialog($mainForm) | Out-Null
 })
 
+ $menuCheckUpdate.Add_Click({ Invoke-UpdateCheck -ManualCheck })
+
  $menuCheckPlink.Add_Click({
     $plinkPath = if ($PSScriptRoot) { Join-Path $PSScriptRoot "plink.exe" } else { ".\plink.exe" }
     if (Test-Path $plinkPath) { [System.Windows.Forms.MessageBox]::Show("plink.exe found at:`n$plinkPath", "plink Check", 0, 64) | Out-Null }
@@ -1342,5 +1354,7 @@ Set-BatchSizeChecks $script:batchSize
     if ($script:bgPowerShell) { $script:bgPowerShell.Dispose() }
 })
 
+Invoke-UpdateCheck
+
 [void]$mainForm.ShowDialog()
-$mainForm.Dispose()
+ $mainForm.Dispose()
