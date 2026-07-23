@@ -1,7 +1,7 @@
 ﻿Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
 
- $currentVersion = "1.5"
+ $currentVersion = "1.6"
  $rawBase        = "https://raw.githubusercontent.com/tyler-eaker/EzRNF/main"
  $scriptPath     = $MyInvocation.MyCommand.Path
 
@@ -585,6 +585,58 @@ VALUES
                 $csvOrders.Add([PSCustomObject]@{ Order = $p.Order; Loc = $p.Loc })
             }
         }
+    } elseif ($ctx.IsDelete) {
+        Update-UI "[2/4] Delete Mode: Bypassing archive scan.`r`n"
+        Update-UI "[3/4] Delete Mode: Bypassing DTS/Abhive sync.`r`n"
+        Update-UI "[4/4] Checking order statuses... " -Status "Checking statuses..."
+
+        $existingOrders = @{}
+        $safeBases = $parsedOrders.Base | Where-Object { $_ -match '^\d{8}$' } | Select-Object -Unique
+        $inClause  = "'" + ($safeBases -join "','") + "'"
+        $dbRows    = Invoke-PlinkQuery -Sql "SELECT ID, BO, Status, PULID, CGFID FROM rdvorderhead WHERE ID IN ($inClause);"
+        if ($dbRows -join "`n" -match "ERROR") { Update-UI "`r`nCRITICAL ERROR: Failed to query DB statuses.`r`n" -AlwaysShow; return }
+
+        foreach ($row in $dbRows) {
+            $cols = $row -split "`t"
+            if ($cols.Count -ge 2 -and -not [string]::IsNullOrWhiteSpace($cols[0])) {
+                $dbId     = $cols[0].Trim()
+                $dbBo     = $cols[1].Trim()
+                $boSuffix = if ($dbBo -match '^\d+$') { "{0:D2}" -f [int]$dbBo } else { "00" }
+                $existingOrders["$dbId-$boSuffix"] = @{ Status=$cols[2].Trim(); Pulid=$cols[3].Trim(); CgfId=$cols[4].Trim() }
+            }
+        }
+
+        $pendingDeletes = New-Object System.Collections.Generic.List[PSCustomObject]
+
+        foreach ($order in $parsedOrders) {
+            if (-not $existingOrders.ContainsKey($order.FullOrder)) {
+                $tableData.Add([PSCustomObject]@{ Order=$order.FullOrder; Status="RNF"; Loc="--"; Carrier="--"; OD="--"; Action="Not Found"; IsNone=1 })
+                continue
+            }
+            $existing  = $existingOrders[$order.FullOrder]
+            $dbLoc     = if ($PidToLoc.ContainsKey($existing.Pulid)) { $PidToLoc[$existing.Pulid] } else { "--" }
+            $dbCarrier = if ($cgfidToCarrier.ContainsKey($existing.CgfId)) { $cgfidToCarrier[$existing.CgfId] } else { $existing.CgfId }
+
+            if ($existing.Status -ne "10") {
+                $tableData.Add([PSCustomObject]@{ Order=$order.FullOrder; Status=$existing.Status; Loc=$dbLoc; Carrier=$dbCarrier; OD="--"; Action="Cannot Delete (Not in Wave)"; IsNone=0 })
+                continue
+            }
+            $pendingDeletes.Add([PSCustomObject]@{ Order=$order.FullOrder; Base=$order.Base; Loc=$dbLoc; Carrier=$dbCarrier })
+        }
+
+        if ($pendingDeletes.Count -gt 0) {
+            Update-UI " Deleting $($pendingDeletes.Count) order(s)..."
+            $deleteIds    = "'" + (($pendingDeletes | Select-Object -ExpandProperty Base | Select-Object -Unique) -join "','") + "'"
+            $deleteResult = Invoke-PlinkQuery -Sql "DELETE FROM rdvorderhead WHERE ID IN ($deleteIds) AND Status = '10';"
+            $deleteStr    = $deleteResult -join "`n"
+
+            if ($deleteStr -match "ERROR") {
+                Update-UI "`r`nSQL ERROR: $deleteStr`r`n" -AlwaysShow
+                foreach ($p in $pendingDeletes) { $tableData.Add([PSCustomObject]@{ Order=$p.Order; Status="10"; Loc=$p.Loc; Carrier=$p.Carrier; OD="--"; Action="FAILED (SQL Error)"; IsNone=1 }) }
+            } else {
+                foreach ($p in $pendingDeletes) { $tableData.Add([PSCustomObject]@{ Order=$p.Order; Status="10"; Loc=$p.Loc; Carrier=$p.Carrier; OD="--"; Action="DELETED"; IsNone=1 }) }
+            }
+        }
     } else {
         $uniqueBases = $parsedOrders.Base | Select-Object -Unique
 
@@ -1055,7 +1107,7 @@ VALUES
 
  $modeDropdown = New-Object System.Windows.Forms.ComboBox; $modeDropdown.Location = New-Object System.Drawing.Point(225, 500); $modeDropdown.Size = New-Object System.Drawing.Size(130, 22); $modeDropdown.DropDownStyle = [System.Windows.Forms.ComboBoxStyle]::DropDownList
  $modeDropdown.Anchor = [System.Windows.Forms.AnchorStyles]::Bottom -bor [System.Windows.Forms.AnchorStyles]::Left
- $modeDropdown.Items.AddRange(@("B2C / DTS", "STS"))
+ $modeDropdown.Items.AddRange(@("B2C / DTS", "STS", "Delete"))
  $modeDropdown.SelectedIndex = 0
 
  $stsPanel = New-Object System.Windows.Forms.Panel
@@ -1108,6 +1160,9 @@ VALUES
         $outputTextBox.Location = New-Object System.Drawing.Point(190, 54)
         $outputTextBox.Size = New-Object System.Drawing.Size($rightWidth, ($bottomY - 54))
     }
+    $isDelete = ($modeDropdown.SelectedItem -eq "Delete")
+    $createCsvCheckbox.Enabled = -not $isDelete
+    $openCsvCheckbox.Enabled   = (-not $isDelete) -and $createCsvCheckbox.Checked
 })
 
  $createCsvCheckbox.Add_CheckedChanged({
@@ -1312,14 +1367,15 @@ function Set-BatchSizeChecks {
         statusQueue = $script:statusQueue
         resultQueue = $script:resultQueue
         
-        IsSts = ($modeDropdown.SelectedItem -eq "STS")
+        IsSts    = ($modeDropdown.SelectedItem -eq "STS")
+        IsDelete = ($modeDropdown.SelectedItem -eq "Delete")
     }
 
     if ($ctx.IsSts) {
-        $ctx.StsLoc = $stsLocDropdown.SelectedItem
-        $ctx.StsCarrier = $stsCarrierDropdown.SelectedItem
+        $ctx.StsLoc          = $stsLocDropdown.SelectedItem
+        $ctx.StsCarrier      = $stsCarrierDropdown.SelectedItem
         $ctx.StsCarrierCgfid = $script:stsCarrierToCgfid[$ctx.StsCarrier]
-        $ctx.StsTag = $stsTagDropdown.SelectedItem
+        $ctx.StsTag          = $stsTagDropdown.SelectedItem
     }
 
     $script:bgRunspace = [runspacefactory]::CreateRunspace()
