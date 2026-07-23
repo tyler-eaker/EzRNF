@@ -1,7 +1,7 @@
 ﻿Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
 
- $currentVersion = "1.6"
+ $currentVersion = "1.7"
  $rawBase        = "https://raw.githubusercontent.com/tyler-eaker/EzRNF/main"
  $scriptPath     = $MyInvocation.MyCommand.Path
 
@@ -676,6 +676,7 @@ VALUES
                 $cartonBatchEnd = [Math]::Min($cartonIdx + $script:batchSize, $recentCsvs.Count)
                 while ($cartonIdx -lt $cartonBatchEnd) {
                     $file = $recentCsvs[$cartonIdx]; $cartonIdx++; $cartonChecked++
+                    Update-UI -Status "Scanning Carton: $($file.Name)"
                     $foundInThisFile = 0
                     $reader = $null
                     try {
@@ -687,13 +688,27 @@ VALUES
                             for ($i=0; $i -lt $headers.Length; $i++) { $hMap[$headers[$i].Trim('"')] = $i }
                             $idxOrder = $hMap["Order"]; $idxHazmat = $hMap["Hazmat"]; $idxGift = $hMap["Gift Card"]
                             $idxWH = $hMap["WH"]; $idxCarrier = $hMap["Carrier/Service"]; $idxOrderCode = $hMap["Order Code"]; $idxCustNum = $hMap["Cust Number"]
+                            $idxBO = $hMap["BO"]
+                            if ($null -eq $idxBO) { $idxBO = $hMap["Bo"] }
+                            if ($null -eq $idxBO) { $idxBO = $hMap["Order Suffix"] } 
                             
                             while ($null -ne ($line = $reader.ReadLine())) {
+                                if ([string]::IsNullOrWhiteSpace($line)) { continue }
                                 $cols = $line -split ','
                                 
-                                $orderRaw = if ($idxOrder -ne $null -and $idxOrder -lt $cols.Length) { $cols[$idxOrder].Trim('"') } else { "" }
-                                $orderFull = if ($orderRaw -match '^(\d{8})$') { "$orderRaw-00" } elseif ($orderRaw -match '^(\d{8})[-_]?(\d{2})$') { "$($Matches[1])-$($Matches[2])" } else { $orderRaw }
-                                if ($targetLookup.ContainsKey($orderFull)) {
+                                $orderRaw = if ($idxOrder -ne $null -and $idxOrder -lt $cols.Length) { $cols[$idxOrder].Trim('"').Trim() } else { "" }
+                                $boRaw = if ($idxBO -ne $null -and $idxBO -lt $cols.Length) { $cols[$idxBO].Trim('"').Trim() } else { "" }
+                                
+                                $orderFull = $null
+                                if ($orderRaw -match '^(\d{8})[-_]?(\d{2})$') { 
+                                    $orderFull = "$($Matches[1])-$($Matches[2])" 
+                                } elseif ($orderRaw -match '^(\d{8})$' -and $boRaw -match '^\d{1,2}$') { 
+                                    $orderFull = "$orderRaw-$("{0:D2}" -f [int]$boRaw)" 
+                                } elseif ($orderRaw -match '^(\d{8})$') { 
+                                    $orderFull = "$orderRaw-00" 
+                                }
+                                
+                                if ($orderFull -and $targetLookup.ContainsKey($orderFull)) {
                                     $isHazmat = if ($idxHazmat -ne $null -and $idxHazmat -lt $cols.Length) { $cols[$idxHazmat].Trim('"') -match "Y|1|True" } else { $false }
                                     $isGift   = if ($idxGift -ne $null -and $idxGift -lt $cols.Length) { $cols[$idxGift].Trim('"') -match "Y|1|True" } else { $false }
 
@@ -728,6 +743,7 @@ VALUES
                 $intakeBatchEnd = [Math]::Min($intakeIdx + $script:batchSize, $intakeCsvs.Count)
                 while ($intakeIdx -lt $intakeBatchEnd) {
                     $file = $intakeCsvs[$intakeIdx]; $intakeIdx++; $intakeChecked++
+                    Update-UI -Status "Scanning Intake: $($file.Name)"
                     $foundInThisFile = 0
                     $reader = $null
                     try {
@@ -739,33 +755,41 @@ VALUES
                             for ($i=0; $i -lt $headers.Length; $i++) { $hMap[$headers[$i].Trim('"')] = $i }
                             $idxOrder = $hMap["Order #"]; $idxAddrNo = $hMap["Address No"]; $idxCtry = $hMap["Ctry"]
                             $idxWH = $hMap["Warehouse"]; $idxCarrier = $hMap["Carrier"]; $idxOrderCode = $hMap["Order Code"]
+                            $idxBO = $hMap["BO"]; if ($null -eq $idxBO) { $idxBO = $hMap["Bo"] }
 
                             while ($null -ne ($line = $reader.ReadLine())) {
+                                if ([string]::IsNullOrWhiteSpace($line)) { continue }
                                 $cols = $line -split ','
                                 
-                                $orderNum = if ($idxOrder -ne $null -and $idxOrder -lt $cols.Length) { $cols[$idxOrder].Trim('"') } else { "" }
-                                if ($orderNum -match '^(\d{8})(?:[-_]?(\d{2}))?') {
-                                    $orderBase = $Matches[1]
-                                    $orderSuf = if ($Matches[2]) { $Matches[2] } else { "00" }
-                                    $orderFull = "$orderBase-$orderSuf"
-                                    if ($targetLookup.ContainsKey($orderFull)) {
-                                        $addrNo = if ($idxAddrNo -ne $null -and $idxAddrNo -lt $cols.Length) { $cols[$idxAddrNo].Trim('"') } else { "" }
-                                        $ctry = if ($idxCtry -ne $null -and $idxCtry -lt $cols.Length) { $cols[$idxCtry].Trim('"').ToUpper() } else { "" }
-                                        if (-not $csvDataMap.ContainsKey($orderFull)) {
-                                            $wh = if ($idxWH -ne $null -and $idxWH -lt $cols.Length) { $cols[$idxWH].Trim('"').ToUpper() } else { "" }
-                                            $intakeCarrier = if ($idxCarrier -ne $null -and $idxCarrier -lt $cols.Length) { $cols[$idxCarrier].Trim('"') } else { "" }
-                                            $csvDataMap[$orderFull] = [PSCustomObject]@{
-                                                Carrier   = $intakeCarrier
-                                                OrderCode = if ($idxOrderCode -ne $null -and $idxOrderCode -lt $cols.Length) { $cols[$idxOrderCode].Trim('"') } else { "" }
-                                                IsHazmat  = $false; IsGift = $false
-                                                Loc       = switch ($wh) { "AV" {"NV"} "AM" {"MD"} "AT" {"TX"} "ATC" {"TX"} default {"N/A"} }
-                                                Ctry      = $ctry; Source = "intake"; CustNum = $addrNo
-                                            }
-                                            $foundInThisFile++
-                                        } elseif ($csvDataMap[$orderFull].OrderCode -match "(?i)AYStoreF" -and $csvDataMap[$orderFull].CustNum -notmatch "[A-Za-z]") {
-                                            $csvDataMap[$orderFull].Ctry = $ctry
-                                            if ($addrNo -match "[A-Za-z]") { $csvDataMap[$orderFull].CustNum = $addrNo; $foundInThisFile++ }
+                                $orderNum = if ($idxOrder -ne $null -and $idxOrder -lt $cols.Length) { $cols[$idxOrder].Trim('"').Trim() } else { "" }
+                                $boNum = if ($idxBO -ne $null -and $idxBO -lt $cols.Length) { $cols[$idxBO].Trim('"').Trim() } else { "" }
+                                
+                                $orderFull = $null
+                                if ($orderNum -match '^(\d{8})[-_]?(\d{2})$') { 
+                                    $orderFull = "$($Matches[1])-$($Matches[2])" 
+                                } elseif ($orderNum -match '^(\d{8})$' -and $boNum -match '^\d{1,2}$') { 
+                                    $orderFull = "$orderNum-$("{0:D2}" -f [int]$boNum)" 
+                                } elseif ($orderNum -match '^(\d{8})$') { 
+                                    $orderFull = "$orderNum-00" 
+                                }
+
+                                if ($orderFull -and $targetLookup.ContainsKey($orderFull)) {
+                                    $addrNo = if ($idxAddrNo -ne $null -and $idxAddrNo -lt $cols.Length) { $cols[$idxAddrNo].Trim('"') } else { "" }
+                                    $ctry = if ($idxCtry -ne $null -and $idxCtry -lt $cols.Length) { $cols[$idxCtry].Trim('"').ToUpper() } else { "" }
+                                    if (-not $csvDataMap.ContainsKey($orderFull)) {
+                                        $wh = if ($idxWH -ne $null -and $idxWH -lt $cols.Length) { $cols[$idxWH].Trim('"').ToUpper() } else { "" }
+                                        $intakeCarrier = if ($idxCarrier -ne $null -and $idxCarrier -lt $cols.Length) { $cols[$idxCarrier].Trim('"') } else { "" }
+                                        $csvDataMap[$orderFull] = [PSCustomObject]@{
+                                            Carrier   = $intakeCarrier
+                                            OrderCode = if ($idxOrderCode -ne $null -and $idxOrderCode -lt $cols.Length) { $cols[$idxOrderCode].Trim('"') } else { "" }
+                                            IsHazmat  = $false; IsGift = $false
+                                            Loc       = switch ($wh) { "AV" {"NV"} "AM" {"MD"} "AT" {"TX"} "ATC" {"TX"} default {"N/A"} }
+                                            Ctry      = $ctry; Source = "intake"; CustNum = $addrNo
                                         }
+                                        $foundInThisFile++
+                                    } elseif ($csvDataMap[$orderFull].OrderCode -match "(?i)AYStoreF" -and $csvDataMap[$orderFull].CustNum -notmatch "[A-Za-z]") {
+                                        $csvDataMap[$orderFull].Ctry = $ctry
+                                        if ($addrNo -match "[A-Za-z]") { $csvDataMap[$orderFull].CustNum = $addrNo; $foundInThisFile++ }
                                     }
                                 }
                             }
