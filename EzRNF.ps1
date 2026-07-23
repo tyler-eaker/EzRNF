@@ -1,7 +1,7 @@
 ﻿Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
 
- $currentVersion = "1.7"
+ $currentVersion = "1.8"
  $rawBase        = "https://raw.githubusercontent.com/tyler-eaker/EzRNF/main"
  $scriptPath     = $MyInvocation.MyCommand.Path
 
@@ -52,7 +52,6 @@ function Invoke-UpdateCheck {
     SettingsPath    = Join-Path $env:APPDATA "EzRNF\settings.json"
     HistoryPath     = Join-Path $env:APPDATA "EzRNF\history.json"
     ErrorLogPath    = Join-Path $env:APPDATA "EzRNF\error.log"
-    CreatedByGfid   = "01KQ7NCP5KYGVBEDX7NRVPZJVF"
     DefaultSulid    = "01GPY0D43RDM84F371FNNWMTV8"
     DefaultSchan    = "10000000000000301"
     DtsSchan        = "10000000000000303"
@@ -155,6 +154,7 @@ function Write-ErrorLog {
         LblUser         = "SSH Username:"
         LblSshPass      = "SSH Password:"
         LblDbPass       = "MariaDB Password:"
+        LblUlid         = "Your ULID:"
         LblInput        = "Paste Orders:"
         LblOutput       = "System Output:"
         LblMode         = "Mode:"
@@ -200,6 +200,7 @@ function Write-ErrorLog {
         LblUser         = "Usuario SSH:"
         LblSshPass      = "Contraseña SSH:"
         LblDbPass       = "Contraseña MariaDB:"
+        LblUlid         = "Tu ULID:"
         LblInput        = "Pegar Órdenes:"
         LblOutput       = "Salida del Sistema:"
         LblMode         = "Modo:"
@@ -250,6 +251,7 @@ function Set-Language {
     $lblUser.Text              = $s.LblUser
     $lblSshPass.Text           = $s.LblSshPass
     $lblDbPass.Text            = $s.LblDbPass
+    $lblUlid.Text              = $s.LblUlid
     $inputLabel.Text           = $s.LblInput
     $outputLabel.Text          = $s.LblOutput
     $modeLabel.Text            = $s.LblMode
@@ -305,6 +307,7 @@ function Save-Settings {
         SshUser     = $txtUser.Text.Trim()
         SshPass     = $sshPassToSave
         DbPass      = $dbPassToSave
+        UserUlid    = $txtUlid.Text.Trim()
         CreateCsv   = $createCsvCheckbox.Checked
         OpenCsv     = $openCsvCheckbox.Checked
         AlwaysOnTop = $mainForm.TopMost
@@ -326,6 +329,7 @@ function Load-Settings {
         if ($s.SshUser) { $txtUser.Text = $s.SshUser }
         if ($s.SshPass) { $txtSshPass.Text = [System.Runtime.InteropServices.Marshal]::PtrToStringAuto([System.Runtime.InteropServices.Marshal]::SecureStringToBSTR((ConvertTo-SecureString $s.SshPass))) }
         if ($s.DbPass)  { $txtDbPass.Text  = [System.Runtime.InteropServices.Marshal]::PtrToStringAuto([System.Runtime.InteropServices.Marshal]::SecureStringToBSTR((ConvertTo-SecureString $s.DbPass))) }
+        if ($s.UserUlid) { $txtUlid.Text = $s.UserUlid }
 
         $createCsvCheckbox.Checked = if ($null -ne $s.CreateCsv) { [bool]$s.CreateCsv } else { $true }
         $openCsvCheckbox.Checked   = if ($null -ne $s.OpenCsv) { [bool]$s.OpenCsv } else { $true }
@@ -484,7 +488,18 @@ function Load-Settings {
     elseif ($testStr -match "Access denied" -or $testStr -match "FATAL ERROR" -or $testStr -match "Authentication failed") { Update-UI "ERROR: SSH Username or Password is incorrect.`r`n" -AlwaysShow; return }
     elseif ($testStr -notmatch "(?m)^1$") { Update-UI "ERROR: Unknown connection issue. Output:`r`n$testStr`r`n" -AlwaysShow; return }
 
-    Update-UI "      -> SSH and Database connected successfully.`r`n" -Status "Syncing carriers..."
+    Update-UI "      -> SSH and Database connected successfully.`r`n" -Status "Validating ULID..."
+    Update-UI "      -> Validating ULID...`r`n"
+
+    $userUlid = $ctx.UserUlid
+    $ulidRows = Invoke-PlinkQuery -Sql "SELECT ULID FROM abhive WHERE ULID = '$userUlid' LIMIT 1;"
+    if ($ulidRows -join "`n" -match "ERROR") { Update-UI "`r`nCRITICAL ERROR: Failed to validate ULID.`r`n" -AlwaysShow; return }
+    if (-not ($ulidRows | Where-Object { $_.Trim() -eq $userUlid })) {
+        Update-UI "`r`nERROR: ULID '$userUlid' was not found in the abhive table. Please enter a valid ULID.`r`n" -AlwaysShow
+        return
+    }
+
+    Update-UI "      -> ULID validated successfully.`r`n" -Status "Syncing carriers..."
     Update-UI "      -> Syncing carrier display names from database...`r`n"
 
     $cgfidToCarrier = @{}
@@ -557,7 +572,7 @@ function Load-Settings {
 INSERT INTO rdvorderhead 
 (GFID, PULID, Brand, ID, ID2, BO, SChan, SULID, PGFID, OrderHostCode, PricePfx, PriceSfx, Typ, PO, Customer, BillToCode, ShipTo, ShipToCode, CtnQty, LnQty, ItemQty, CtnPicked, CtnPacked, UnixOrder, UnixPickup, UnixShip, UnixDelivery, CGFID, Tracking, Note, Msg, Confirmed, Status, UnixCreated, CreatedBy, UnixDropped, DroppedBy, UnixShipped, ShippedBy, UnixLast, LastBy, LastFGFID) 
 VALUES 
-('$safeGfid', '$activePid', '$($Config.BrandGfid)', '$base', '', '$boInt', '$schan', '$sulid', '0', '', '', '', '$pstr', '', '', '', '', '', '0', '0', '0', '0', '0', '$unixMidnightUtc', '$unixMidnightUtc', '0', '$unixMidnightUtc', '$rstr', '', '', '', '0', '10', '$unixCurrentTime', '$($Config.CreatedByGfid)', '0', '', '0', '', '0', '', '0');
+('$safeGfid', '$activePid', '$($Config.BrandGfid)', '$base', '', '$boInt', '$schan', '$sulid', '0', '', '', '', '$pstr', '', '', '', '', '', '0', '0', '0', '0', '0', '$unixMidnightUtc', '$unixMidnightUtc', '0', '$unixMidnightUtc', '$rstr', '', '', '', '0', '10', '$unixCurrentTime', '$userUlid', '0', '', '0', '', '0', '', '0');
 "@
             $pendingInserts.Add([PSCustomObject]@{ Query=$insertQuery; Order=$order.FullOrder; Loc=$selectedLoc; Carrier=$selectedCarrier; Tag=$selectedTag })
         }
@@ -916,7 +931,7 @@ VALUES
 INSERT INTO rdvorderhead 
 (GFID, PULID, Brand, ID, ID2, BO, SChan, SULID, PGFID, OrderHostCode, PricePfx, PriceSfx, Typ, PO, Customer, BillToCode, ShipTo, ShipToCode, CtnQty, LnQty, ItemQty, CtnPicked, CtnPacked, UnixOrder, UnixPickup, UnixShip, UnixDelivery, CGFID, Tracking, Note, Msg, Confirmed, Status, UnixCreated, CreatedBy, UnixDropped, DroppedBy, UnixShipped, ShippedBy, UnixLast, LastBy, LastFGFID) 
 VALUES 
-('$safeGfid', '$activePid', '$($Config.BrandGfid)', '$base', '', '$boInt', '$schan', '$sulid', '0', '', '', '', '$pstr', '', '', '', '', '', '0', '0', '0', '0', '0', '$unixMidnightUtc', '$unixMidnightUtc', '0', '$unixMidnightUtc', '$rstr', '', '', '', '0', '10', '$unixCurrentTime', '$($Config.CreatedByGfid)', '0', '', '0', '', '0', '', '0');
+('$safeGfid', '$activePid', '$($Config.BrandGfid)', '$base', '', '$boInt', '$schan', '$sulid', '0', '', '', '', '$pstr', '', '', '', '', '', '0', '0', '0', '0', '0', '$unixMidnightUtc', '$unixMidnightUtc', '0', '$unixMidnightUtc', '$rstr', '', '', '', '0', '10', '$unixCurrentTime', '$userUlid', '0', '', '0', '', '0', '', '0');
 "@
             $pendingInserts.Add([PSCustomObject]@{ Query=$insertQuery; Order=$order.FullOrder; Loc=$displayLoc; Carrier=$cleanCarrier; Tag=if ($tag -eq "DTS") { "REPLEN" } else { $tag } })
         }
@@ -1087,8 +1102,11 @@ VALUES
  $lblDbPass = New-Object System.Windows.Forms.Label; $lblDbPass.Location = New-Object System.Drawing.Point(20, 119); $lblDbPass.Size = New-Object System.Drawing.Size(150, 15); $lblDbPass.Text = "MariaDB Password:"
  $txtDbPass = New-Object System.Windows.Forms.TextBox; $txtDbPass.Location = New-Object System.Drawing.Point(20, 134); $txtDbPass.Size = New-Object System.Drawing.Size(150, 20); $txtDbPass.PasswordChar = '*'
 
- $inputLabel = New-Object System.Windows.Forms.Label; $inputLabel.Location = New-Object System.Drawing.Point(20, 164); $inputLabel.Size = New-Object System.Drawing.Size(150, 15); $inputLabel.Text = "Paste Orders:"
- $inputTextBox = New-Object System.Windows.Forms.RichTextBox; $inputTextBox.Location = New-Object System.Drawing.Point(20, 179); $inputTextBox.Size = New-Object System.Drawing.Size(150, 230); $inputTextBox.WordWrap = $false
+ $lblUlid = New-Object System.Windows.Forms.Label; $lblUlid.Location = New-Object System.Drawing.Point(20, 159); $lblUlid.Size = New-Object System.Drawing.Size(150, 15); $lblUlid.Text = "Your ULID:"
+ $txtUlid = New-Object System.Windows.Forms.TextBox; $txtUlid.Location = New-Object System.Drawing.Point(20, 174); $txtUlid.Size = New-Object System.Drawing.Size(150, 20)
+
+ $inputLabel = New-Object System.Windows.Forms.Label; $inputLabel.Location = New-Object System.Drawing.Point(20, 199); $inputLabel.Size = New-Object System.Drawing.Size(150, 15); $inputLabel.Text = "Paste Orders:"
+ $inputTextBox = New-Object System.Windows.Forms.RichTextBox; $inputTextBox.Location = New-Object System.Drawing.Point(20, 214); $inputTextBox.Size = New-Object System.Drawing.Size(150, 195); $inputTextBox.WordWrap = $false
  $inputTextBox.Anchor = [System.Windows.Forms.AnchorStyles]::Top -bor [System.Windows.Forms.AnchorStyles]::Bottom -bor [System.Windows.Forms.AnchorStyles]::Left
 
  $inputTextBox.Add_KeyDown({
@@ -1168,7 +1186,7 @@ VALUES
  $statusStrip.Items.Add($statusLabel) | Out-Null
  $statusStrip.Items.Add($creditLabel) | Out-Null
 
- $mainForm.Controls.AddRange(@($lblUser, $txtUser, $lblSshPass, $txtSshPass, $lblDbPass, $txtDbPass, $inputLabel, $inputTextBox, $createCsvCheckbox, $openCsvCheckbox, $processButton, $copyOrdersButton, $modeLabel, $modeDropdown, $outputLabel, $outputTextBox, $stsPanel, $statusStrip))
+ $mainForm.Controls.AddRange(@($lblUser, $txtUser, $lblSshPass, $txtSshPass, $lblDbPass, $txtDbPass, $lblUlid, $txtUlid, $inputLabel, $inputTextBox, $createCsvCheckbox, $openCsvCheckbox, $processButton, $copyOrdersButton, $modeLabel, $modeDropdown, $outputLabel, $outputTextBox, $stsPanel, $statusStrip))
 
  $modeDropdown.Add_SelectedIndexChanged({
     $rightWidth = $mainForm.ClientSize.Width - 190 - 10
@@ -1352,12 +1370,19 @@ function Set-BatchSizeChecks {
         return
     }
 
-    $user = $txtUser.Text.Trim()
+    $user    = $txtUser.Text.Trim()
     $sshPass = $txtSshPass.Text
-    $dbPass = $txtDbPass.Text
+    $dbPass  = $txtDbPass.Text
+    $userUlid = $txtUlid.Text.Trim()
 
     if (-not $user -or -not $sshPass -or -not $dbPass) {
         $outputTextBox.AppendText("ERROR: Please enter credentials.`r`n")
+        $processButton.Enabled = $true
+        return
+    }
+
+    if ([string]::IsNullOrWhiteSpace($userUlid)) {
+        $outputTextBox.AppendText("ERROR: Please enter your ULID.`r`n")
         $processButton.Enabled = $true
         return
     }
@@ -1378,9 +1403,10 @@ function Set-BatchSizeChecks {
         TagToPstr = $script:tagToPstr
         PidToLoc = $script:pidToLoc
         
-        User = $user
-        SshPass = $sshPass
-        DbPass = $dbPass
+        User     = $user
+        SshPass  = $sshPass
+        DbPass   = $dbPass
+        UserUlid = $userUlid
         OrdersText = $inputTextBox.Text
         CreateCsv = $createCsvCheckbox.Checked
         OpenCsv = $openCsvCheckbox.Checked
