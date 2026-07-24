@@ -1,7 +1,7 @@
 ﻿Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
 
- $currentVersion = "1.8"
+ $currentVersion = "1.9"
  $rawBase        = "https://raw.githubusercontent.com/tyler-eaker/EzRNF/main"
  $scriptPath     = $MyInvocation.MyCommand.Path
 
@@ -172,6 +172,7 @@ function Write-ErrorLog {
         MenuAlwaysOnTop = "Always on Top"
         MenuWordWrap    = "Word Wrap"
         MenuScrollBot   = "Scroll to Bottom"
+        MenuDarkMode    = "Dark Mode"
         MenuFontSize    = "Font Size"
         MenuFontSmall   = "Small (8pt)"
         MenuFontMedium  = "Medium (9pt)"
@@ -218,6 +219,7 @@ function Write-ErrorLog {
         MenuAlwaysOnTop = "Siempre Encima"
         MenuWordWrap    = "Ajuste de Línea"
         MenuScrollBot   = "Ir al Final"
+        MenuDarkMode    = "Modo Oscuro"
         MenuFontSize    = "Tamaño de Fuente"
         MenuFontSmall   = "Pequeño (8pt)"
         MenuFontMedium  = "Mediano (9pt)"
@@ -268,6 +270,7 @@ function Set-Language {
     $menuAlwaysOnTop.Text      = $s.MenuAlwaysOnTop
     $menuWordWrap.Text         = $s.MenuWordWrap
     $menuScrollBottom.Text     = $s.MenuScrollBot
+    $menuDarkMode.Text         = $s.MenuDarkMode
     $menuFontSize.Text         = $s.MenuFontSize
     $menuFontSmall.Text        = $s.MenuFontSmall
     $menuFontMedium.Text       = $s.MenuFontMedium
@@ -316,6 +319,7 @@ function Save-Settings {
         ScanDepth   = $script:scanDepth
         BatchSize   = $script:batchSize
         Language    = $script:lang
+        DarkMode    = $menuDarkMode.Checked
     }
     $dir = Split-Path $script:Config.SettingsPath
     if (-not (Test-Path $dir)) { New-Item -ItemType Directory -Path $dir -Force | Out-Null }
@@ -342,7 +346,76 @@ function Load-Settings {
             $outputTextBox.Font = New-Object System.Drawing.Font("Consolas", [float]$s.FontSize)
         }
         if ($null -ne $s.Language -and $s.Language -ne "") { $script:lang = $s.Language }
+        if ($null -ne $s.DarkMode -and [bool]$s.DarkMode) { $script:pendingDarkMode = $true }
     } catch { Write-ErrorLog -Message "Failed to load settings" -ErrorRecord $_ }
+}
+
+ $script:pendingDarkMode = $false
+
+function Apply-Theme {
+    param([bool]$Dark)
+    if ($Dark) {
+        $bg      = [System.Drawing.Color]::FromArgb(30, 30, 30)
+        $fg      = [System.Drawing.Color]::FromArgb(220, 220, 220)
+        $ctrl    = [System.Drawing.Color]::FromArgb(45, 45, 48)
+        $out     = [System.Drawing.Color]::FromArgb(20, 20, 20)
+        $btnFg   = [System.Drawing.Color]::White
+        $btnBg   = [System.Drawing.Color]::FromArgb(60, 60, 65)
+    } else {
+        $mainForm.BackColor              = [System.Drawing.SystemColors]::Control
+        $outputTextBox.BackColor = [System.Drawing.Color]::White; $outputTextBox.ResetForeColor()
+        $inputTextBox.ResetBackColor();  $inputTextBox.ResetForeColor()
+        $txtUser.ResetBackColor();       $txtUser.ResetForeColor()
+        $txtSshPass.ResetBackColor();    $txtSshPass.ResetForeColor()
+        $txtDbPass.ResetBackColor();     $txtDbPass.ResetForeColor()
+        $txtUlid.ResetBackColor();       $txtUlid.ResetForeColor()
+        $lblUser.ResetForeColor();       $lblSshPass.ResetForeColor()
+        $lblDbPass.ResetForeColor();     $lblUlid.ResetForeColor()
+        $inputLabel.ResetForeColor();    $outputLabel.ResetForeColor()
+        $modeLabel.ResetForeColor()
+        $createCsvCheckbox.ResetForeColor(); $openCsvCheckbox.ResetForeColor()
+        $processButton.ResetBackColor(); $processButton.ResetForeColor()
+        $copyOrdersButton.ResetBackColor(); $copyOrdersButton.ResetForeColor()
+        $stsPanel.ResetBackColor()
+        $stsLocLabel.ResetForeColor();   $stsCarrierLabel.ResetForeColor(); $stsTagLabel.ResetForeColor()
+        $stsLocDropdown.ResetBackColor(); $stsLocDropdown.ResetForeColor()
+        $stsCarrierDropdown.ResetBackColor(); $stsCarrierDropdown.ResetForeColor()
+        $stsTagDropdown.ResetBackColor(); $stsTagDropdown.ResetForeColor()
+        $modeDropdown.ResetBackColor();  $modeDropdown.ResetForeColor()
+        $menuStrip.ResetBackColor();     $menuStrip.ResetForeColor()
+        $statusStrip.ResetBackColor();   $statusStrip.ResetForeColor()
+        return
+    }
+    $mainForm.BackColor              = $bg
+    $outputTextBox.BackColor         = $ctrl
+    $outputTextBox.ForeColor         = $fg
+    $inputTextBox.BackColor          = $ctrl
+    $inputTextBox.ForeColor          = $fg
+    $txtUser.BackColor               = $ctrl;  $txtUser.ForeColor               = $fg
+    $txtSshPass.BackColor            = $ctrl;  $txtSshPass.ForeColor            = $fg
+    $txtDbPass.BackColor             = $ctrl;  $txtDbPass.ForeColor             = $fg
+    $txtUlid.BackColor               = $ctrl;  $txtUlid.ForeColor               = $fg
+    $lblUser.ForeColor               = $fg
+    $lblSshPass.ForeColor            = $fg
+    $lblDbPass.ForeColor             = $fg
+    $lblUlid.ForeColor               = $fg
+    $inputLabel.ForeColor            = $fg
+    $outputLabel.ForeColor           = $fg
+    $modeLabel.ForeColor             = $fg
+    $createCsvCheckbox.ForeColor     = $fg
+    $openCsvCheckbox.ForeColor       = $fg
+    $processButton.ForeColor         = $btnFg; $processButton.BackColor         = $btnBg
+    $copyOrdersButton.ForeColor      = $btnFg; $copyOrdersButton.BackColor      = $btnBg
+    $stsPanel.BackColor              = $bg
+    $stsLocLabel.ForeColor           = $fg
+    $stsCarrierLabel.ForeColor       = $fg
+    $stsTagLabel.ForeColor           = $fg
+    $stsLocDropdown.BackColor        = $ctrl;  $stsLocDropdown.ForeColor        = $fg
+    $stsCarrierDropdown.BackColor    = $ctrl;  $stsCarrierDropdown.ForeColor    = $fg
+    $stsTagDropdown.BackColor        = $ctrl;  $stsTagDropdown.ForeColor        = $fg
+    $modeDropdown.BackColor          = $ctrl;  $modeDropdown.ForeColor          = $fg
+    $menuStrip.BackColor             = $ctrl;  $menuStrip.ForeColor             = $fg
+    $statusStrip.BackColor           = $ctrl;  $statusStrip.ForeColor           = $fg
 }
 
  $bgScript = {
@@ -994,6 +1067,17 @@ VALUES
 
     foreach ($row in $sortedData) { Update-UI ($lineFormat -f $row.Order, $row.Status, $row.Loc, $row.Carrier, $row.OD, $row.Action) }
 
+    $failedCount  = @($tableData | Where-Object { $_.Action -match "FAILED" }).Count
+    $deletedCount = @($tableData | Where-Object { $_.Action -eq "DELETED" }).Count
+    $skippedCount = @($tableData | Where-Object { $_.Action -match "Cannot Delete|Manual Wave|Unknown WH|Missing Abhive|Skipped|Not Found" }).Count
+    $noneCount    = @($tableData | Where-Object { $_.Action -eq "None" }).Count
+    Update-UI "`r`n$("-" * 80)`r`n"
+    if ($ctx.IsDelete) {
+        Update-UI ("Deleted: $deletedCount  |  Cannot Delete: $($skippedCount)  |  Not Found: $(@($tableData | Where-Object { $_.Action -eq 'Not Found' }).Count)  |  Errors: $failedCount`r`n")
+    } else {
+        Update-UI ("Waved: $wavedCount  |  In Wave: $inWaveCount  |  Skipped: $skippedCount  |  None: $noneCount  |  Errors: $failedCount`r`n")
+    }
+
     Update-UI "`r`nExecution finished.`r`n" -AlwaysShow
     
     if ($createCsv -and $csvOrders.Count -gt 0) {
@@ -1035,6 +1119,9 @@ VALUES
  $menuWordWrap    = New-Object System.Windows.Forms.ToolStripMenuItem("Word Wrap")
  $menuWordWrap.CheckOnClick = $true
  $menuScrollBottom = New-Object System.Windows.Forms.ToolStripMenuItem("Scroll to Bottom")
+ $menuDarkMode    = New-Object System.Windows.Forms.ToolStripMenuItem("Dark Mode")
+ $menuDarkMode.CheckOnClick = $true
+ $menuDarkMode.Checked      = $false
 
  $menuFontSize    = New-Object System.Windows.Forms.ToolStripMenuItem("Font Size")
  $menuFontSmall   = New-Object System.Windows.Forms.ToolStripMenuItem("Small (8pt)")
@@ -1045,7 +1132,7 @@ VALUES
 
  $menuView.DropDownItems.AddRange(@(
     $menuClearOutput, $menuClearInput, (New-Object System.Windows.Forms.ToolStripSeparator),
-    $menuAlwaysOnTop, $menuWordWrap, $menuScrollBottom, (New-Object System.Windows.Forms.ToolStripSeparator),
+    $menuAlwaysOnTop, $menuWordWrap, $menuScrollBottom, $menuDarkMode, (New-Object System.Windows.Forms.ToolStripSeparator),
     $menuFontSize
 ))
 
@@ -1108,6 +1195,25 @@ VALUES
  $inputLabel = New-Object System.Windows.Forms.Label; $inputLabel.Location = New-Object System.Drawing.Point(20, 199); $inputLabel.Size = New-Object System.Drawing.Size(150, 15); $inputLabel.Text = "Paste Orders:"
  $inputTextBox = New-Object System.Windows.Forms.RichTextBox; $inputTextBox.Location = New-Object System.Drawing.Point(20, 214); $inputTextBox.Size = New-Object System.Drawing.Size(150, 195); $inputTextBox.WordWrap = $false
  $inputTextBox.Anchor = [System.Windows.Forms.AnchorStyles]::Top -bor [System.Windows.Forms.AnchorStyles]::Bottom -bor [System.Windows.Forms.AnchorStyles]::Left
+
+ $counterTimer = New-Object System.Windows.Forms.Timer
+ $counterTimer.Interval = 300
+ $counterTimer.Add_Tick({
+    $counterTimer.Stop()
+    $r = [regex]'\b(\d{8})(?:[-_]?(\d{2}))?\b'
+    $fullOrders = $r.Matches($inputTextBox.Text) | ForEach-Object {
+        $base   = $_.Groups[1].Value
+        $suffix = if ($_.Groups[2].Success) { $_.Groups[2].Value } else { "00" }
+        "$base-$suffix"
+    } | Select-Object -Unique
+    $count = @($fullOrders).Count
+    $inputLabel.Text = if ($count -gt 0) { "Paste Orders: ($count)" } else { "Paste Orders:" }
+})
+
+ $inputTextBox.Add_TextChanged({
+    $counterTimer.Stop()
+    $counterTimer.Start()
+})
 
  $inputTextBox.Add_KeyDown({
     param($s, $e)
@@ -1229,6 +1335,7 @@ VALUES
  $menuClearOutput.Add_Click({ $outputTextBox.Clear() })
  $menuClearInput.Add_Click({ $inputTextBox.Clear() })
  $menuAlwaysOnTop.Add_Click({ $mainForm.TopMost = $menuAlwaysOnTop.Checked })
+ $menuDarkMode.Add_Click({ Apply-Theme $menuDarkMode.Checked })
  $menuWordWrap.Add_Click({
     $outputTextBox.WordWrap = $menuWordWrap.Checked
     $outputTextBox.ScrollBars = if ($menuWordWrap.Checked) { "Vertical" } else { "Both" }
@@ -1453,6 +1560,8 @@ Set-BatchSizeChecks $script:batchSize
  $menuFontSmall.Checked  = ($fs -le 8)
  $menuFontMedium.Checked = ($fs -eq 9)
  $menuFontLarge.Checked  = ($fs -ge 11)
+
+if ($script:pendingDarkMode) { $menuDarkMode.Checked = $true; Apply-Theme $true }
 
  $mainForm.Add_FormClosing({
     Save-Settings
