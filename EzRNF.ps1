@@ -1,7 +1,7 @@
 ﻿Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
 
- $currentVersion = "1.9"
+ $currentVersion = "1.10"
  $rawBase        = "https://raw.githubusercontent.com/tyler-eaker/EzRNF/main"
  $scriptPath     = $MyInvocation.MyCommand.Path
 
@@ -115,6 +115,7 @@ function Invoke-UpdateCheck {
 
  $script:tagToPstr = @{
     "WEB"="14000000000000380"; "WEB Spc"="14000000000000381"; "WEB Intl"="14000000000000382"
+    "REPLEN"="14000000000000310"; "LAUNCH"="14000000000000320"; "GWP"="14000000000000325"; "NEW"="14000000000000370"
 }
 
  $script:stsCarrierToCgfid = @{
@@ -384,6 +385,13 @@ function Apply-Theme {
         $modeDropdown.ResetBackColor();  $modeDropdown.ResetForeColor()
         $menuStrip.ResetBackColor();     $menuStrip.ResetForeColor()
         $statusStrip.ResetBackColor();   $statusStrip.ResetForeColor()
+        $orderGrid.BackgroundColor = [System.Drawing.Color]::White
+        $orderGrid.GridColor = [System.Drawing.Color]::Silver
+        $orderGrid.DefaultCellStyle.BackColor = [System.Drawing.Color]::White
+        $orderGrid.DefaultCellStyle.ForeColor = [System.Drawing.SystemColors]::ControlText
+        $orderGrid.ColumnHeadersDefaultCellStyle.BackColor = [System.Drawing.SystemColors]::Control
+        $orderGrid.ColumnHeadersDefaultCellStyle.ForeColor = [System.Drawing.SystemColors]::ControlText
+        $orderGrid.AlternatingRowsDefaultCellStyle.BackColor = [System.Drawing.Color]::FromArgb(245, 245, 250)
         return
     }
     $mainForm.BackColor              = $bg
@@ -416,6 +424,12 @@ function Apply-Theme {
     $modeDropdown.BackColor          = $ctrl;  $modeDropdown.ForeColor          = $fg
     $menuStrip.BackColor             = $ctrl;  $menuStrip.ForeColor             = $fg
     $statusStrip.BackColor           = $ctrl;  $statusStrip.ForeColor           = $fg
+    $orderGrid.BackgroundColor       = $bg
+    $orderGrid.GridColor             = if ($Dark) { [System.Drawing.Color]::FromArgb(70,70,70) } else { [System.Drawing.Color]::Silver }
+    $orderGrid.DefaultCellStyle.BackColor = $ctrl; $orderGrid.DefaultCellStyle.ForeColor = $fg
+    $orderGrid.ColumnHeadersDefaultCellStyle.BackColor = if ($Dark) { [System.Drawing.Color]::FromArgb(60,60,65) } else { [System.Drawing.SystemColors]::Control }
+    $orderGrid.ColumnHeadersDefaultCellStyle.ForeColor = $fg
+    $orderGrid.AlternatingRowsDefaultCellStyle.BackColor = if ($Dark) { [System.Drawing.Color]::FromArgb(38,38,42) } else { [System.Drawing.Color]::FromArgb(245,245,250) }
 }
 
  $bgScript = {
@@ -725,6 +739,78 @@ VALUES
                 foreach ($p in $pendingDeletes) { $tableData.Add([PSCustomObject]@{ Order=$p.Order; Status="10"; Loc=$p.Loc; Carrier=$p.Carrier; OD="--"; Action="DELETED"; IsNone=1 }) }
             }
         }
+    } elseif ($ctx.IsStatusCheck) {
+        Update-UI "[2/4] Status Check Mode: Bypassing archive scan.`r`n"
+        Update-UI "[3/4] Status Check Mode: Bypassing DTS/Abhive sync.`r`n"
+        Update-UI "[4/4] Querying order statuses... " -Status "Checking statuses..."
+
+        $safeBases = $parsedOrders.Base | Where-Object { $_ -match '^\d{8}$' } | Select-Object -Unique
+        $inClause  = "'" + ($safeBases -join "','") + "'"
+        $dbRows    = Invoke-PlinkQuery -Sql "SELECT ID, BO, Status, PULID, Typ, CGFID FROM rdvorderhead WHERE ID IN ($inClause);"
+        if ($dbRows -join "`n" -match "ERROR") { Update-UI "`r`nCRITICAL ERROR: Failed to query DB statuses.`r`n" -AlwaysShow; return }
+
+        $existingOrders = @{}
+        foreach ($row in $dbRows) {
+            $cols = $row -split "`t"
+            if ($cols.Count -ge 2 -and -not [string]::IsNullOrWhiteSpace($cols[0])) {
+                $dbId     = $cols[0].Trim()
+                $dbBo     = $cols[1].Trim()
+                $boSuffix = if ($dbBo -match '^\d+$') { "{0:D2}" -f [int]$dbBo } else { "00" }
+                $existingOrders["$dbId-$boSuffix"] = @{ Status=$cols[2].Trim(); Pulid=$cols[3].Trim(); Typ=$cols[4].Trim(); CgfId=$cols[5].Trim() }
+            }
+        }
+
+        foreach ($order in $parsedOrders) {
+            if (-not $existingOrders.ContainsKey($order.FullOrder)) {
+                $tableData.Add([PSCustomObject]@{ Order=$order.FullOrder; Status="RNF"; Loc="--"; Carrier="--"; OD="--"; Action="Not Found"; IsNone=1 })
+                continue
+            }
+            $existing  = $existingOrders[$order.FullOrder]
+            $dbLoc     = if ($PidToLoc.ContainsKey($existing.Pulid)) { $PidToLoc[$existing.Pulid] } else { "--" }
+            $dbTag     = if ($typToTag.ContainsKey($existing.Typ)) { $typToTag[$existing.Typ] } else { "--" }
+            $dbCarrier = if ($cgfidToCarrier.ContainsKey($existing.CgfId)) { $cgfidToCarrier[$existing.CgfId] } else { $existing.CgfId }
+            $tableData.Add([PSCustomObject]@{ Order=$order.FullOrder; Status=$existing.Status; Loc=$dbLoc; Carrier=$dbCarrier; OD=$dbTag; Action="--"; IsNone=1 })
+        }
+
+        Update-UI " Done!`r`n`r`n"
+    } elseif ($ctx.IsOrderTable) {
+        Update-UI "[2/4] Order Table Mode: Bypassing archive scan.`r`n"
+        Update-UI "[3/4] Order Table Mode: Bypassing DTS/Abhive sync.`r`n"
+        Update-UI "[4/4] Querying order table entries... " -Status "Querying table..."
+
+        $safeBases = $parsedOrders.Base | Where-Object { $_ -match '^\d{8}$' } | Select-Object -Unique
+        $inClause  = "'" + ($safeBases -join "','") + "'"
+        $dbRows    = Invoke-PlinkQuery -Sql "SELECT GFID, PULID, Brand, ID, ID2, BO, SChan, SULID, PGFID, OrderHostCode, PricePfx, PriceSfx, Typ, PO, Customer, BillToCode, ShipTo, ShipToCode, CtnQty, LnQty, ItemQty, CtnPicked, CtnPacked, UnixOrder, UnixPickup, UnixShip, UnixDelivery, CGFID, Tracking, Note, Msg, Confirmed, Status, UnixCreated, CreatedBy, UnixDropped, DroppedBy, UnixShipped, ShippedBy, UnixLast, LastBy, LastFGFID FROM rdvorderhead WHERE ID IN ($inClause);"
+        if ($dbRows -join "`n" -match "ERROR") { Update-UI "`r`nCRITICAL ERROR: Failed to query rdvorderhead.`r`n" -AlwaysShow; return }
+
+        $colNames = @("GFID","PULID","Brand","ID","ID2","BO","SChan","SULID","PGFID","OrderHostCode","PricePfx","PriceSfx","Typ","PO","Customer","BillToCode","ShipTo","ShipToCode","CtnQty","LnQty","ItemQty","CtnPicked","CtnPacked","UnixOrder","UnixPickup","UnixShip","UnixDelivery","CGFID","Tracking","Note","Msg","Confirmed","Status","UnixCreated","CreatedBy","UnixDropped","DroppedBy","UnixShipped","ShippedBy","UnixLast","LastBy","LastFGFID")
+
+        $rowMap = @{}
+        foreach ($row in $dbRows) {
+            $cols = $row -split "`t"
+            if ($cols.Count -ge 6) {
+                $dbId     = $cols[3].Trim()
+                $dbBo     = $cols[5].Trim()
+                $boSuffix = if ($dbBo -match '^\d+$') { "{0:D2}" -f [int]$dbBo } else { "00" }
+                $rowMap["$dbId-$boSuffix"] = $cols
+            }
+        }
+
+        Update-UI " Done!`r`n`r`n"
+
+        $gridData = [PSCustomObject]@{ ColNames = $colNames; Rows = @() }
+        $gridRows = New-Object System.Collections.Generic.List[string[]]
+        foreach ($order in $parsedOrders) {
+            if ($rowMap.ContainsKey($order.FullOrder)) {
+                $gridRows.Add($rowMap[$order.FullOrder])
+            } else {
+                $notFoundRow = @($order.FullOrder) + (@("") * ($colNames.Count - 1))
+                $notFoundRow[1] = "[Not Found]"
+                $gridRows.Add($notFoundRow)
+            }
+        }
+        $gridData.Rows = $gridRows.ToArray()
+        $resultQueue.Enqueue(@{ OrderGridData = $gridData })
     } else {
         $uniqueBases = $parsedOrders.Base | Select-Object -Unique
 
@@ -1034,48 +1120,53 @@ VALUES
     }
 
     Update-UI " Done!`r`n`r`n" -Status "Rendering results..."
-    
-    $lineFormat = "{0,-14}{1,-8}{2,-6}{3,-18}{4,-16}{5}`r`n"
-    Update-UI ($lineFormat -f "Order:", "Status:", "Loc:", "Carrier:", "OD:", "Action:")
-    Update-UI ("-" * 80 + "`r`n")
 
-    $sortProps = @(
-        @{ Expression = {
-            if ($_.Action -eq "None") { 0 }
-            elseif ($_.Action -match "(?i)In Wave|Added to CSV|Already in Wave") { 1 }
-            elseif ($_.Action -match "(?i)WAVED") { 2 }
-            else { 3 }
-          }; Ascending = $true },
-        @{ Expression = {
-            if ($_.Loc -eq "MD") { 0 }
-            elseif ($_.Loc -eq "TX") { 1 }
-            elseif ($_.Loc -eq "NV") { 2 }
-            else { 3 }
-          }; Ascending = $true },
-        @{ Expression = { try { [int]$_.Status } catch { 0 } }; Ascending = $false },
-        @{ Expression = {
-            if ($_.OD -eq "WEB") { 1 }
-            elseif ($_.OD -eq "WEB Spc") { 2 }
-            elseif ($_.OD -eq "WEB Intl") { 3 }
-            elseif ($_.OD -match "^WEB") { 4 }
-            else { 0 }
-          }; Ascending = $true },
-        @{ Expression = { $_.Carrier }; Ascending = $true }
-    )
-    
-    $sortedData = $tableData | Sort-Object $sortProps
+    if (-not $ctx.IsOrderTable) {
+        $lineFormat = "{0,-14}{1,-8}{2,-6}{3,-18}{4,-16}{5}`r`n"
+        Update-UI ($lineFormat -f "Order:", "Status:", "Loc:", "Carrier:", "OD:", "Action:")
+        Update-UI ("-" * 80 + "`r`n")
 
-    foreach ($row in $sortedData) { Update-UI ($lineFormat -f $row.Order, $row.Status, $row.Loc, $row.Carrier, $row.OD, $row.Action) }
+        $sortProps = @(
+            @{ Expression = {
+                if ($_.Action -eq "None") { 0 }
+                elseif ($_.Action -match "(?i)In Wave|Added to CSV|Already in Wave") { 1 }
+                elseif ($_.Action -match "(?i)WAVED") { 2 }
+                else { 3 }
+              }; Ascending = $true },
+            @{ Expression = {
+                if ($_.Loc -eq "MD") { 0 }
+                elseif ($_.Loc -eq "TX") { 1 }
+                elseif ($_.Loc -eq "NV") { 2 }
+                else { 3 }
+              }; Ascending = $true },
+            @{ Expression = { try { [int]$_.Status } catch { 0 } }; Ascending = $false },
+            @{ Expression = {
+                if ($_.OD -eq "WEB") { 1 }
+                elseif ($_.OD -eq "WEB Spc") { 2 }
+                elseif ($_.OD -eq "WEB Intl") { 3 }
+                elseif ($_.OD -match "^WEB") { 4 }
+                else { 0 }
+              }; Ascending = $true },
+            @{ Expression = { $_.Carrier }; Ascending = $true }
+        )
 
-    $failedCount  = @($tableData | Where-Object { $_.Action -match "FAILED" }).Count
-    $deletedCount = @($tableData | Where-Object { $_.Action -eq "DELETED" }).Count
-    $skippedCount = @($tableData | Where-Object { $_.Action -match "Cannot Delete|Manual Wave|Unknown WH|Missing Abhive|Skipped|Not Found" }).Count
-    $noneCount    = @($tableData | Where-Object { $_.Action -eq "None" }).Count
-    Update-UI "`r`n$("-" * 80)`r`n"
-    if ($ctx.IsDelete) {
-        Update-UI ("Deleted: $deletedCount  |  Cannot Delete: $($skippedCount)  |  Not Found: $(@($tableData | Where-Object { $_.Action -eq 'Not Found' }).Count)  |  Errors: $failedCount`r`n")
-    } else {
-        Update-UI ("Waved: $wavedCount  |  In Wave: $inWaveCount  |  Skipped: $skippedCount  |  None: $noneCount  |  Errors: $failedCount`r`n")
+        $sortedData = $tableData | Sort-Object $sortProps
+        foreach ($row in $sortedData) { Update-UI ($lineFormat -f $row.Order, $row.Status, $row.Loc, $row.Carrier, $row.OD, $row.Action) }
+
+        $failedCount  = @($tableData | Where-Object { $_.Action -match "FAILED" }).Count
+        $deletedCount = @($tableData | Where-Object { $_.Action -eq "DELETED" }).Count
+        $skippedCount = @($tableData | Where-Object { $_.Action -match "Cannot Delete|Manual Wave|Unknown WH|Missing Abhive|Skipped|Not Found" }).Count
+        $noneCount    = @($tableData | Where-Object { $_.Action -eq "None" }).Count
+        Update-UI "`r`n$("-" * 80)`r`n"
+        if ($ctx.IsDelete) {
+            Update-UI ("Deleted: $deletedCount  |  Cannot Delete: $($skippedCount)  |  Not Found: $(@($tableData | Where-Object { $_.Action -eq 'Not Found' }).Count)  |  Errors: $failedCount`r`n")
+        } elseif ($ctx.IsStatusCheck) {
+            $foundCount = @($tableData | Where-Object { $_.Status -ne "RNF" }).Count
+            $notFound   = @($tableData | Where-Object { $_.Status -eq "RNF" }).Count
+            Update-UI ("Found: $foundCount  |  Not Found: $notFound`r`n")
+        } else {
+            Update-UI ("Waved: $wavedCount  |  In Wave: $inWaveCount  |  Skipped: $skippedCount  |  None: $noneCount  |  Errors: $failedCount`r`n")
+        }
     }
 
     Update-UI "`r`nExecution finished.`r`n" -AlwaysShow
@@ -1250,12 +1341,37 @@ VALUES
  $outputTextBox = New-Object System.Windows.Forms.TextBox; $outputTextBox.Location = New-Object System.Drawing.Point(190, 54); $outputTextBox.Size = New-Object System.Drawing.Size(590, 440); $outputTextBox.Multiline = $true; $outputTextBox.ScrollBars = "Both"; $outputTextBox.ReadOnly = $true; $outputTextBox.BackColor = [System.Drawing.Color]::White; $outputTextBox.WordWrap = $false; $outputTextBox.Font = New-Object System.Drawing.Font("Consolas", 9)
  $outputTextBox.Anchor = [System.Windows.Forms.AnchorStyles]::Top -bor [System.Windows.Forms.AnchorStyles]::Bottom -bor [System.Windows.Forms.AnchorStyles]::Left -bor [System.Windows.Forms.AnchorStyles]::Right
 
+ $orderGrid = New-Object System.Windows.Forms.DataGridView
+ $orderGrid.Location = New-Object System.Drawing.Point(190, 54)
+ $orderGrid.Size = New-Object System.Drawing.Size(590, 440)
+ $orderGrid.Anchor = [System.Windows.Forms.AnchorStyles]::Top -bor [System.Windows.Forms.AnchorStyles]::Bottom -bor [System.Windows.Forms.AnchorStyles]::Left -bor [System.Windows.Forms.AnchorStyles]::Right
+ $orderGrid.ReadOnly = $true
+ $orderGrid.AllowUserToAddRows = $false
+ $orderGrid.AllowUserToDeleteRows = $false
+ $orderGrid.AllowUserToResizeRows = $false
+ $orderGrid.RowHeadersVisible = $false
+ $orderGrid.AutoSizeColumnsMode = [System.Windows.Forms.DataGridViewAutoSizeColumnsMode]::AllCells
+ $orderGrid.SelectionMode = [System.Windows.Forms.DataGridViewSelectionMode]::FullRowSelect
+ $orderGrid.ScrollBars = [System.Windows.Forms.ScrollBars]::Both
+ $orderGrid.Font = New-Object System.Drawing.Font("Consolas", 9)
+ $orderGrid.ColumnHeadersDefaultCellStyle.Font = New-Object System.Drawing.Font("Consolas", 9, [System.Drawing.FontStyle]::Bold)
+ $orderGrid.ColumnHeadersHeightSizeMode = [System.Windows.Forms.DataGridViewColumnHeadersHeightSizeMode]::AutoSize
+ $orderGrid.Visible = $false
+ $orderGrid.ClipboardCopyMode = [System.Windows.Forms.DataGridViewClipboardCopyMode]::EnableWithoutHeaderText
+ $orderGrid.BackgroundColor = [System.Drawing.Color]::White
+ $orderGrid.GridColor = [System.Drawing.Color]::Silver
+ $orderGrid.DefaultCellStyle.BackColor = [System.Drawing.Color]::White
+ $orderGrid.DefaultCellStyle.ForeColor = [System.Drawing.SystemColors]::ControlText
+ $orderGrid.ColumnHeadersDefaultCellStyle.BackColor = [System.Drawing.SystemColors]::Control
+ $orderGrid.ColumnHeadersDefaultCellStyle.ForeColor = [System.Drawing.SystemColors]::ControlText
+ $orderGrid.AlternatingRowsDefaultCellStyle.BackColor = [System.Drawing.Color]::FromArgb(245, 245, 250)
+
  $modeLabel = New-Object System.Windows.Forms.Label; $modeLabel.Location = New-Object System.Drawing.Point(190, 503); $modeLabel.Size = New-Object System.Drawing.Size(35, 15); $modeLabel.Text = "Mode:"
  $modeLabel.Anchor = [System.Windows.Forms.AnchorStyles]::Bottom -bor [System.Windows.Forms.AnchorStyles]::Left
 
  $modeDropdown = New-Object System.Windows.Forms.ComboBox; $modeDropdown.Location = New-Object System.Drawing.Point(225, 500); $modeDropdown.Size = New-Object System.Drawing.Size(130, 22); $modeDropdown.DropDownStyle = [System.Windows.Forms.ComboBoxStyle]::DropDownList
  $modeDropdown.Anchor = [System.Windows.Forms.AnchorStyles]::Bottom -bor [System.Windows.Forms.AnchorStyles]::Left
- $modeDropdown.Items.AddRange(@("B2C / DTS", "STS", "Delete"))
+ $modeDropdown.Items.AddRange(@("B2C / DTS", "Manual", "Delete", "Status Check", "Order Table"))
  $modeDropdown.SelectedIndex = 0
 
  $stsPanel = New-Object System.Windows.Forms.Panel
@@ -1276,7 +1392,7 @@ VALUES
 
  $stsTagLabel = New-Object System.Windows.Forms.Label; $stsTagLabel.Location = New-Object System.Drawing.Point(290, 5); $stsTagLabel.Size = New-Object System.Drawing.Size(80, 15); $stsTagLabel.Text = "Order Type:"
  $stsTagDropdown = New-Object System.Windows.Forms.ComboBox; $stsTagDropdown.Location = New-Object System.Drawing.Point(290, 22); $stsTagDropdown.Size = New-Object System.Drawing.Size(120, 22); $stsTagDropdown.DropDownStyle = [System.Windows.Forms.ComboBoxStyle]::DropDownList
- $stsTagDropdown.Items.AddRange(@("WEB", "WEB Spc", "WEB Intl"))
+ $stsTagDropdown.Items.AddRange(@("WEB", "WEB Spc", "WEB Intl", "REPLEN", "LAUNCH", "GWP", "NEW"))
  $stsTagDropdown.SelectedIndex = 0
 
  $stsPanel.Controls.AddRange(@($stsLocLabel, $stsLocDropdown, $stsCarrierLabel, $stsCarrierDropdown, $stsTagLabel, $stsTagDropdown))
@@ -1292,25 +1408,39 @@ VALUES
  $statusStrip.Items.Add($statusLabel) | Out-Null
  $statusStrip.Items.Add($creditLabel) | Out-Null
 
- $mainForm.Controls.AddRange(@($lblUser, $txtUser, $lblSshPass, $txtSshPass, $lblDbPass, $txtDbPass, $lblUlid, $txtUlid, $inputLabel, $inputTextBox, $createCsvCheckbox, $openCsvCheckbox, $processButton, $copyOrdersButton, $modeLabel, $modeDropdown, $outputLabel, $outputTextBox, $stsPanel, $statusStrip))
+ $mainForm.Controls.AddRange(@($lblUser, $txtUser, $lblSshPass, $txtSshPass, $lblDbPass, $txtDbPass, $lblUlid, $txtUlid, $inputLabel, $inputTextBox, $createCsvCheckbox, $openCsvCheckbox, $processButton, $copyOrdersButton, $modeLabel, $modeDropdown, $outputLabel, $outputTextBox, $orderGrid, $stsPanel, $statusStrip))
 
  $modeDropdown.Add_SelectedIndexChanged({
     $rightWidth = $mainForm.ClientSize.Width - 190 - 10
     $bottomY    = $mainForm.ClientSize.Height - $statusStrip.Height - 55
-    if ($modeDropdown.SelectedItem -eq "STS") {
+    if ($modeDropdown.SelectedItem -eq "Manual") {
         $stsPanel.Visible = $true
         $outputLabel.Location = New-Object System.Drawing.Point(190, 120)
         $outputTextBox.Location = New-Object System.Drawing.Point(190, 136)
         $outputTextBox.Size = New-Object System.Drawing.Size($rightWidth, ($bottomY - 136))
+        $orderGrid.Location = New-Object System.Drawing.Point(190, 136)
+        $orderGrid.Size = New-Object System.Drawing.Size($rightWidth, ($bottomY - 136))
     } else {
         $stsPanel.Visible = $false
         $outputLabel.Location = New-Object System.Drawing.Point(190, 39)
         $outputTextBox.Location = New-Object System.Drawing.Point(190, 54)
         $outputTextBox.Size = New-Object System.Drawing.Size($rightWidth, ($bottomY - 54))
+        $orderGrid.Location = New-Object System.Drawing.Point(190, 54)
+        $orderGrid.Size = New-Object System.Drawing.Size($rightWidth, ($bottomY - 54))
     }
-    $isDelete = ($modeDropdown.SelectedItem -eq "Delete")
+    $outputTextBox.Clear()
+    $orderGrid.Columns.Clear()
+    $orderGrid.Rows.Clear()
+    $isDelete = ($modeDropdown.SelectedItem -eq "Delete") -or ($modeDropdown.SelectedItem -eq "Status Check") -or ($modeDropdown.SelectedItem -eq "Order Table")
     $createCsvCheckbox.Enabled = -not $isDelete
     $openCsvCheckbox.Enabled   = (-not $isDelete) -and $createCsvCheckbox.Checked
+    $isOrderTable = ($modeDropdown.SelectedItem -eq "Order Table")
+    $outputTextBox.Visible = -not $isOrderTable
+    $orderGrid.Visible     = $isOrderTable
+    if (-not $isOrderTable) {
+        $outputTextBox.WordWrap   = $menuWordWrap.Checked
+        $outputTextBox.ScrollBars = if ($menuWordWrap.Checked) { "Vertical" } else { "Both" }
+    }
 })
 
  $createCsvCheckbox.Add_CheckedChanged({
@@ -1441,6 +1571,17 @@ function Set-BatchSizeChecks {
     $res = $null
     while ($script:resultQueue.TryDequeue([ref]$res)) {
         if ($res.LastRunData) { $script:lastRunData = $res.LastRunData }
+        if ($res.OrderGridData) {
+            $gd = $res.OrderGridData
+            $orderGrid.Columns.Clear()
+            $orderGrid.Rows.Clear()
+            foreach ($col in $gd.ColNames) {
+                $orderGrid.Columns.Add($col, $col) | Out-Null
+            }
+            foreach ($row in $gd.Rows) {
+                $orderGrid.Rows.Add($row) | Out-Null
+            }
+        }
     }
 
     if ($null -ne $script:bgHandle -and $script:bgHandle.IsCompleted) {
@@ -1524,8 +1665,10 @@ function Set-BatchSizeChecks {
         statusQueue = $script:statusQueue
         resultQueue = $script:resultQueue
         
-        IsSts    = ($modeDropdown.SelectedItem -eq "STS")
-        IsDelete = ($modeDropdown.SelectedItem -eq "Delete")
+        IsSts         = ($modeDropdown.SelectedItem -eq "Manual")
+        IsDelete      = ($modeDropdown.SelectedItem -eq "Delete")
+        IsStatusCheck = ($modeDropdown.SelectedItem -eq "Status Check")
+        IsOrderTable  = ($modeDropdown.SelectedItem -eq "Order Table")
     }
 
     if ($ctx.IsSts) {
