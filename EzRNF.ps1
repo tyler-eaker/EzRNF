@@ -1,7 +1,7 @@
 ﻿Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
 
- $currentVersion = "1.11"
+ $currentVersion = "1.12"
  $rawBase        = "https://raw.githubusercontent.com/tyler-eaker/EzRNF/main"
  $scriptPath     = $MyInvocation.MyCommand.Path
 
@@ -565,7 +565,7 @@ function Apply-Theme {
     }
 
     $parsedOrdersList = New-Object System.Collections.Generic.List[PSCustomObject]
-    $regex = [regex]'\b(\d{10}|\d{8})(?:[-_]?(\d{2}))?\b'
+    $regex = [regex]'\b(1\d{9}|\d{8})(?:[-_]?(\d{2}))?\b'
     foreach ($match in $regex.Matches($ctx.OrdersText)) {
         $base   = $match.Groups[1].Value
         $suffix = if ($match.Groups[2].Success) { $match.Groups[2].Value } else { "00" }
@@ -642,7 +642,7 @@ function Apply-Theme {
         Update-UI "[4/4] Processing final database operations... " -Status "Executing DB operations..."
 
         $existingOrders = @{}
-        $safeBases = $parsedOrders.Base | Where-Object { $_ -match '^\d{8}$|^\d{10}$' } | Select-Object -Unique
+        $safeBases = $parsedOrders.Base | Where-Object { $_ -match '^\d{8}$|^1\d{9}$' } | Select-Object -Unique
         if (@($safeBases).Count -eq 0) {
             Update-UI "`r`nERROR: No valid order numbers found for database query.`r`n" -AlwaysShow
             return
@@ -718,7 +718,7 @@ VALUES
         Update-UI "[4/4] Checking order statuses... " -Status "Checking statuses..."
 
         $existingOrders = @{}
-        $safeBases = $parsedOrders.Base | Where-Object { $_ -match '^\d{8}$|^\d{10}$' } | Select-Object -Unique
+        $safeBases = $parsedOrders.Base | Where-Object { $_ -match '^\d{8}$|^1\d{9}$' } | Select-Object -Unique
         if (@($safeBases).Count -eq 0) {
             Update-UI "`r`nERROR: No valid order numbers found for database query.`r`n" -AlwaysShow
             return
@@ -793,7 +793,7 @@ VALUES
         Update-UI "[3/4] Status Check Mode: Bypassing DTS/Abhive sync.`r`n"
         Update-UI "[4/4] Querying order statuses... " -Status "Checking statuses..."
 
-        $safeBases = $parsedOrders.Base | Where-Object { $_ -match '^\d{8}$|^\d{10}$' } | Select-Object -Unique
+        $safeBases = $parsedOrders.Base | Where-Object { $_ -match '^\d{8}$|^1\d{9}$' } | Select-Object -Unique
         if (@($safeBases).Count -eq 0) {
             Update-UI "`r`nERROR: No valid order numbers found for database query.`r`n" -AlwaysShow
             return
@@ -831,7 +831,7 @@ VALUES
         Update-UI "[3/4] Order Table Mode: Bypassing DTS/Abhive sync.`r`n"
         Update-UI "[4/4] Querying order table entries... " -Status "Querying table..."
 
-        $safeBases = $parsedOrders.Base | Where-Object { $_ -match '^\d{8}$|^\d{10}$' } | Select-Object -Unique
+        $safeBases = $parsedOrders.Base | Where-Object { $_ -match '^\d{8}$|^1\d{9}$' } | Select-Object -Unique
         if (@($safeBases).Count -eq 0) {
             Update-UI "`r`nERROR: No valid order numbers found for database query.`r`n" -AlwaysShow
             return
@@ -872,7 +872,7 @@ VALUES
         $uniqueBases = $parsedOrders.Base | Select-Object -Unique
 
         $existingOrders = @{}
-        $safeBases = $uniqueBases | Where-Object { $_ -match '^\d{8}$|^\d{10}$' }
+        $safeBases = $uniqueBases | Where-Object { $_ -match '^\d{8}$|^1\d{9}$' }
         if (@($safeBases).Count -eq 0) {
             Update-UI "`r`nERROR: No valid order numbers found for database query.`r`n" -AlwaysShow
             return
@@ -935,11 +935,19 @@ VALUES
                                 $boRaw = if ($idxBO -ne $null -and $idxBO -lt $cols.Length) { $cols[$idxBO].Trim('"').Trim() } else { "" }
 
                                 $orderFull = $null
-                                if ($orderRaw -match '^(\d{10}|\d{8})[-_]?(\d{2})$') {
+                                if ($orderRaw -match '^(1\d{9})[-_]?(\d{2})$') {
                                     $orderFull = "$($Matches[1])-$($Matches[2])"
-                                } elseif ($orderRaw -match '^(\d{10}|\d{8})$' -and $boRaw -match '^\d{1,2}$') {
+                                } elseif ($orderRaw -match '^1\d{9}$') {
+                                    if ($boRaw -match '^\d{1,2}$') {
+                                        $orderFull = "$orderRaw-$("{0:D2}" -f [int]$boRaw)"
+                                    } else {
+                                        $orderFull = "$orderRaw-00"
+                                    }
+                                } elseif ($orderRaw -match '^(\d{8})[-_]?(\d{2})$') {
+                                    $orderFull = "$($Matches[1])-$($Matches[2])"
+                                } elseif ($orderRaw -match '^\d{8}$' -and $boRaw -match '^\d{1,2}$') {
                                     $orderFull = "$orderRaw-$("{0:D2}" -f [int]$boRaw)"
-                                } elseif ($orderRaw -match '^(\d{10}|\d{8})$') {
+                                } elseif ($orderRaw -match '^\d{8}$') {
                                     $orderFull = "$orderRaw-00"
                                 }
 
@@ -1000,11 +1008,19 @@ VALUES
                                 $boNum = if ($idxBO -ne $null -and $idxBO -lt $cols.Length) { $cols[$idxBO].Trim('"').Trim() } else { "" }
 
                                 $orderFull = $null
-                                if ($orderNum -match '^(\d{10}|\d{8})[-_]?(\d{2})$') {
+                                if ($orderNum -match '^(1\d{9})[-_]?(\d{2})$') {
                                     $orderFull = "$($Matches[1])-$($Matches[2])"
-                                } elseif ($orderNum -match '^(\d{10}|\d{8})$' -and $boNum -match '^\d{1,2}$') {
+                                } elseif ($orderNum -match '^1\d{9}$') {
+                                    if ($boNum -match '^\d{1,2}$') {
+                                        $orderFull = "$orderNum-$("{0:D2}" -f [int]$boNum)"
+                                    } else {
+                                        $orderFull = "$orderNum-00"
+                                    }
+                                } elseif ($orderNum -match '^(\d{8})[-_]?(\d{2})$') {
+                                    $orderFull = "$($Matches[1])-$($Matches[2])"
+                                } elseif ($orderNum -match '^\d{8}$' -and $boNum -match '^\d{1,2}$') {
                                     $orderFull = "$orderNum-$("{0:D2}" -f [int]$boNum)"
-                                } elseif ($orderNum -match '^(\d{10}|\d{8})$') {
+                                } elseif ($orderNum -match '^\d{8}$') {
                                     $orderFull = "$orderNum-00"
                                 }
 
@@ -1352,7 +1368,7 @@ VALUES
  $counterTimer.Interval = 300
  $counterTimer.Add_Tick({
     $counterTimer.Stop()
-    $r = [regex]'\b(\d{10}|\d{8})(?:[-_]?(\d{2}))?\b'
+    $r = [regex]'\b(1\d{9}|\d{8})(?:[-_]?(\d{2}))?\b'
     $fullOrders = $r.Matches($inputTextBox.Text) | ForEach-Object {
         $base   = $_.Groups[1].Value
         $suffix = if ($_.Groups[2].Success) { $_.Groups[2].Value } else { "00" }
