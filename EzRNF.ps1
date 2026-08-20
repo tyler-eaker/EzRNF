@@ -1,7 +1,7 @@
 ﻿Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
 
- $currentVersion = "1.10"
+ $currentVersion = "1.11"
  $rawBase        = "https://raw.githubusercontent.com/tyler-eaker/EzRNF/main"
  $scriptPath     = $MyInvocation.MyCommand.Path
 
@@ -21,9 +21,12 @@ function Invoke-UpdateCheck {
             if ($result -eq [System.Windows.Forms.DialogResult]::Yes) {
                 $latestScript = (Invoke-WebRequest -Uri "$rawBase/EzRNF.ps1" -UseBasicParsing -TimeoutSec 30).Content
                 if (-not [string]::IsNullOrWhiteSpace($latestScript)) {
+                    if (Test-Path $scriptPath) {
+                        Copy-Item $scriptPath "$scriptPath.bak" -Force
+                    }
                     [System.IO.File]::WriteAllText($scriptPath, $latestScript, (New-Object System.Text.UTF8Encoding $false))
                     [System.Windows.Forms.MessageBox]::Show(
-                        "Updated to version $latestVersion.`nThe application will now restart.",
+                        "Updated to version $latestVersion.`nThe application will now restart.`nA backup of the previous version was saved as EzRNF.ps1.bak",
                         "Update Complete",
                         [System.Windows.Forms.MessageBoxButtons]::OK,
                         [System.Windows.Forms.MessageBoxIcon]::Information
@@ -61,7 +64,6 @@ function Invoke-UpdateCheck {
  $script:activeSshUser  = ""
  $script:activeSshPass  = ""
  $script:activeDbPass   = ""
- $script:csvOrders      = New-Object System.Collections.Generic.List[PSCustomObject]
  $script:lastRunData    = @()
  $script:scanDepth      = 24
  $script:batchSize      = 3
@@ -359,7 +361,6 @@ function Apply-Theme {
         $bg      = [System.Drawing.Color]::FromArgb(30, 30, 30)
         $fg      = [System.Drawing.Color]::FromArgb(220, 220, 220)
         $ctrl    = [System.Drawing.Color]::FromArgb(45, 45, 48)
-        $out     = [System.Drawing.Color]::FromArgb(20, 20, 20)
         $btnFg   = [System.Drawing.Color]::White
         $btnBg   = [System.Drawing.Color]::FromArgb(60, 60, 65)
     } else {
@@ -412,6 +413,7 @@ function Apply-Theme {
     $modeLabel.ForeColor             = $fg
     $createCsvCheckbox.ForeColor     = $fg
     $openCsvCheckbox.ForeColor       = $fg
+    $chkOverride.ForeColor           = if ($Dark) { [System.Drawing.Color]::FromArgb(255, 100, 100) } else { [System.Drawing.Color]::Firebrick }
     $processButton.ForeColor         = $btnFg; $processButton.BackColor         = $btnBg
     $copyOrdersButton.ForeColor      = $btnFg; $copyOrdersButton.BackColor      = $btnBg
     $stsPanel.BackColor              = $bg
@@ -434,7 +436,7 @@ function Apply-Theme {
 
  $bgScript = {
     param($ctx)
-    
+
     $Config = $ctx.Config
     $LocationPids = $ctx.LocationPids
     $TypToTag = $ctx.TypToTag
@@ -443,19 +445,19 @@ function Apply-Theme {
     $IntakeCarrierToCgfid = $ctx.IntakeCarrierToCgfid
     $TagToPstr = $ctx.TagToPstr
     $PidToLoc = $ctx.PidToLoc
-    
+
     $script:activeSshUser = $ctx.User
     $script:activeSshPass = $ctx.SshPass
     $script:activeDbPass  = $ctx.DbPass
     $script:scanDepth     = $ctx.ScanDepth
     $script:batchSize     = $ctx.BatchSize
-    
+
     $createCsv = $ctx.CreateCsv
     $openCsv   = $ctx.OpenCsv
     $uiQueue = $ctx.uiQueue
     $statusQueue = $ctx.statusQueue
     $resultQueue = $ctx.resultQueue
-    
+
     function Update-UI {
         param([string]$Text, [string]$Status = $null, [switch]$AlwaysShow)
         if ($Text) { $uiQueue.Enqueue($Text) }
@@ -480,14 +482,26 @@ function Apply-Theme {
         if (-not (Test-Path $plinkPath)) { return "ERROR: plink.exe not found" }
 
         $tempPassFile = [System.IO.Path]::GetTempFileName()
+        try {
+            $acl = Get-Acl $tempPassFile -ErrorAction Stop
+            $acl.SetAccessRuleProtection($true, $false)
+            $rule = New-Object System.Security.AccessControl.FileSystemAccessRule(
+                [System.Security.Principal.WindowsIdentity]::GetCurrent().Name,
+                [System.Security.AccessControl.FileSystemRights]::FullControl,
+                [System.Security.AccessControl.AccessControlType]::Allow
+            )
+            $acl.AddAccessRule($rule)
+            Set-Acl -Path $tempPassFile -AclObject $acl -ErrorAction Stop
+        } catch { }
+
         $process = $null
         try {
             [System.IO.File]::WriteAllText($tempPassFile, $script:activeSshPass)
-            $args = "-ssh -P $($Config.SshPort) $($script:activeSshUser)@$($Config.SshHost) -pwfile `"$tempPassFile`" -batch `"/usr/bin/mysql -u root -p`"$($script:activeDbPass)`" -D $($Config.DbName) -sN`""
-            
+            $plinkArgs = "-ssh -P $($Config.SshPort) $($script:activeSshUser)@$($Config.SshHost) -pwfile `"$tempPassFile`" -batch `"/usr/bin/mysql -u root -p`"$($script:activeDbPass)`" -D $($Config.DbName) -sN`""
+
             $processInfo = New-Object System.Diagnostics.ProcessStartInfo
             $processInfo.FileName = $plinkPath
-            $processInfo.Arguments = $args
+            $processInfo.Arguments = $plinkArgs
             $processInfo.RedirectStandardInput = $true
             $processInfo.RedirectStandardOutput = $true
             $processInfo.RedirectStandardError = $true
@@ -500,10 +514,10 @@ function Apply-Theme {
 
             $process.StandardInput.WriteLine($Sql)
             $process.StandardInput.Close()
-            
+
             $output = $process.StandardOutput.ReadToEnd()
             $error  = $process.StandardError.ReadToEnd()
-            
+
             $process.WaitForExit()
 
             if (-not [string]::IsNullOrWhiteSpace($error) -and $error -notmatch "Using a password on the command line interface can be insecure") {
@@ -551,7 +565,7 @@ function Apply-Theme {
     }
 
     $parsedOrdersList = New-Object System.Collections.Generic.List[PSCustomObject]
-    $regex = [regex]'\b(\d{8})(?:[-_]?(\d{2}))?\b'
+    $regex = [regex]'\b(\d{10}|\d{8})(?:[-_]?(\d{2}))?\b'
     foreach ($match in $regex.Matches($ctx.OrdersText)) {
         $base   = $match.Groups[1].Value
         $suffix = if ($match.Groups[2].Success) { $match.Groups[2].Value } else { "00" }
@@ -566,7 +580,7 @@ function Apply-Theme {
 
     Update-UI "Processing $($parsedOrders.Count) unique order(s)...`r`n`r`n" -Status "Authenticating..."
     Update-UI "[1/4] Authenticating credentials...`r`n"
-    
+
     $testConnection = Invoke-PlinkQuery -Sql "SELECT 1;"
     $testStr = $testConnection -join "`n"
 
@@ -579,6 +593,11 @@ function Apply-Theme {
     Update-UI "      -> Validating ULID...`r`n"
 
     $userUlid = $ctx.UserUlid
+    if ($userUlid -notmatch '^[0-9A-HJKMNP-TV-Z]{26}$') {
+        Update-UI "`r`nERROR: ULID format is invalid. Expected 26-character ULID (e.g., 01GPY0D43RDM84F371FNNWMTV8).`r`n" -AlwaysShow
+        return
+    }
+
     $ulidRows = Invoke-PlinkQuery -Sql "SELECT ULID FROM abhive WHERE ULID = '$userUlid' LIMIT 1;"
     if ($ulidRows -join "`n" -match "ERROR") { Update-UI "`r`nCRITICAL ERROR: Failed to validate ULID.`r`n" -AlwaysShow; return }
     if (-not ($ulidRows | Where-Object { $_.Trim() -eq $userUlid })) {
@@ -606,6 +625,8 @@ function Apply-Theme {
     $unixMidnightUtc = [Math]::Floor((New-TimeSpan -Start (Get-Date "1970-01-01") -End (Get-Date).ToUniversalTime().Date).TotalSeconds)
     $unixCurrentTime = [Math]::Floor((New-TimeSpan -Start (Get-Date "1970-01-01") -End (Get-Date).ToUniversalTime()).TotalSeconds)
 
+    $sortedData = @()
+
     if ($ctx.IsSts) {
         $selectedLoc = $ctx.StsLoc
         $selectedCarrier = $ctx.StsCarrier
@@ -619,9 +640,13 @@ function Apply-Theme {
         Update-UI "[2/4] STS Mode: Bypassing archive scan.`r`n"
         Update-UI "[3/4] STS Mode: Bypassing DTS/Abhive sync.`r`n"
         Update-UI "[4/4] Processing final database operations... " -Status "Executing DB operations..."
-        
+
         $existingOrders = @{}
-        $safeBases = $parsedOrders.Base | Where-Object { $_ -match '^\d{8}$' } | Select-Object -Unique
+        $safeBases = $parsedOrders.Base | Where-Object { $_ -match '^\d{8}$|^\d{10}$' } | Select-Object -Unique
+        if (@($safeBases).Count -eq 0) {
+            Update-UI "`r`nERROR: No valid order numbers found for database query.`r`n" -AlwaysShow
+            return
+        }
         $inClause = "'" + ($safeBases -join "','") + "'"
         $dbRows = Invoke-PlinkQuery -Sql "SELECT ID, BO, Status FROM rdvorderhead WHERE ID IN ($inClause);"
         if ($dbRows -join "`n" -match "ERROR") { Update-UI "`r`nCRITICAL ERROR: Failed to query existing DB statuses.`r`n" -AlwaysShow; return }
@@ -656,9 +681,9 @@ function Apply-Theme {
             $safeGfid = "305" + (Get-Date -Format "yyMMddHHmmss") + "{0:D3}" -f $insertCounter
             $boInt = [int]$order.Suffix
             $insertQuery = @"
-INSERT INTO rdvorderhead 
-(GFID, PULID, Brand, ID, ID2, BO, SChan, SULID, PGFID, OrderHostCode, PricePfx, PriceSfx, Typ, PO, Customer, BillToCode, ShipTo, ShipToCode, CtnQty, LnQty, ItemQty, CtnPicked, CtnPacked, UnixOrder, UnixPickup, UnixShip, UnixDelivery, CGFID, Tracking, Note, Msg, Confirmed, Status, UnixCreated, CreatedBy, UnixDropped, DroppedBy, UnixShipped, ShippedBy, UnixLast, LastBy, LastFGFID) 
-VALUES 
+INSERT INTO rdvorderhead
+(GFID, PULID, Brand, ID, ID2, BO, SChan, SULID, PGFID, OrderHostCode, PricePfx, PriceSfx, Typ, PO, Customer, BillToCode, ShipTo, ShipToCode, CtnQty, LnQty, ItemQty, CtnPicked, CtnPacked, UnixOrder, UnixPickup, UnixShip, UnixDelivery, CGFID, Tracking, Note, Msg, Confirmed, Status, UnixCreated, CreatedBy, UnixDropped, DroppedBy, UnixShipped, ShippedBy, UnixLast, LastBy, LastFGFID)
+VALUES
 ('$safeGfid', '$activePid', '$($Config.BrandGfid)', '$base', '', '$boInt', '$schan', '$sulid', '0', '', '', '', '$pstr', '', '', '', '', '', '0', '0', '0', '0', '0', '$unixMidnightUtc', '$unixMidnightUtc', '0', '$unixMidnightUtc', '$rstr', '', '', '', '0', '10', '$unixCurrentTime', '$userUlid', '0', '', '0', '', '0', '', '0');
 "@
             $pendingInserts.Add([PSCustomObject]@{ Query=$insertQuery; Order=$order.FullOrder; Loc=$selectedLoc; Carrier=$selectedCarrier; Tag=$selectedTag })
@@ -693,18 +718,22 @@ VALUES
         Update-UI "[4/4] Checking order statuses... " -Status "Checking statuses..."
 
         $existingOrders = @{}
-        $safeBases = $parsedOrders.Base | Where-Object { $_ -match '^\d{8}$' } | Select-Object -Unique
+        $safeBases = $parsedOrders.Base | Where-Object { $_ -match '^\d{8}$|^\d{10}$' } | Select-Object -Unique
+        if (@($safeBases).Count -eq 0) {
+            Update-UI "`r`nERROR: No valid order numbers found for database query.`r`n" -AlwaysShow
+            return
+        }
         $inClause  = "'" + ($safeBases -join "','") + "'"
-        $dbRows    = Invoke-PlinkQuery -Sql "SELECT ID, BO, Status, PULID, CGFID FROM rdvorderhead WHERE ID IN ($inClause);"
+        $dbRows    = Invoke-PlinkQuery -Sql "SELECT ID, BO, Status, PULID, CGFID, GFID FROM rdvorderhead WHERE ID IN ($inClause);"
         if ($dbRows -join "`n" -match "ERROR") { Update-UI "`r`nCRITICAL ERROR: Failed to query DB statuses.`r`n" -AlwaysShow; return }
 
         foreach ($row in $dbRows) {
             $cols = $row -split "`t"
-            if ($cols.Count -ge 2 -and -not [string]::IsNullOrWhiteSpace($cols[0])) {
+            if ($cols.Count -ge 6 -and -not [string]::IsNullOrWhiteSpace($cols[0])) {
                 $dbId     = $cols[0].Trim()
                 $dbBo     = $cols[1].Trim()
                 $boSuffix = if ($dbBo -match '^\d+$') { "{0:D2}" -f [int]$dbBo } else { "00" }
-                $existingOrders["$dbId-$boSuffix"] = @{ Status=$cols[2].Trim(); Pulid=$cols[3].Trim(); CgfId=$cols[4].Trim() }
+                $existingOrders["$dbId-$boSuffix"] = @{ Status=$cols[2].Trim(); Pulid=$cols[3].Trim(); CgfId=$cols[4].Trim(); Gfid=$cols[5].Trim() }
             }
         }
 
@@ -719,24 +748,44 @@ VALUES
             $dbLoc     = if ($PidToLoc.ContainsKey($existing.Pulid)) { $PidToLoc[$existing.Pulid] } else { "--" }
             $dbCarrier = if ($cgfidToCarrier.ContainsKey($existing.CgfId)) { $cgfidToCarrier[$existing.CgfId] } else { $existing.CgfId }
 
-            if ($existing.Status -ne "10") {
+            if ($existing.Status -ne "10" -and -not $ctx.OverrideWave) {
                 $tableData.Add([PSCustomObject]@{ Order=$order.FullOrder; Status=$existing.Status; Loc=$dbLoc; Carrier=$dbCarrier; OD="--"; Action="Cannot Delete (Not in Wave)"; IsNone=0 })
                 continue
             }
-            $pendingDeletes.Add([PSCustomObject]@{ Order=$order.FullOrder; Base=$order.Base; Loc=$dbLoc; Carrier=$dbCarrier })
+            $pendingDeletes.Add([PSCustomObject]@{ Order=$order.FullOrder; Base=$order.Base; Gfid=$existing.Gfid; Status=[int]$existing.Status; Loc=$dbLoc; Carrier=$dbCarrier })
         }
 
         if ($pendingDeletes.Count -gt 0) {
             Update-UI " Deleting $($pendingDeletes.Count) order(s)..."
-            $deleteIds    = "'" + (($pendingDeletes | Select-Object -ExpandProperty Base | Select-Object -Unique) -join "','") + "'"
-            $deleteResult = Invoke-PlinkQuery -Sql "DELETE FROM rdvorderhead WHERE ID IN ($deleteIds) AND Status = '10';"
-            $deleteStr    = $deleteResult -join "`n"
 
-            if ($deleteStr -match "ERROR") {
-                Update-UI "`r`nSQL ERROR: $deleteStr`r`n" -AlwaysShow
-                foreach ($p in $pendingDeletes) { $tableData.Add([PSCustomObject]@{ Order=$p.Order; Status="10"; Loc=$p.Loc; Carrier=$p.Carrier; OD="--"; Action="FAILED (SQL Error)"; IsNone=1 }) }
-            } else {
-                foreach ($p in $pendingDeletes) { $tableData.Add([PSCustomObject]@{ Order=$p.Order; Status="10"; Loc=$p.Loc; Carrier=$p.Carrier; OD="--"; Action="DELETED"; IsNone=1 }) }
+            $needCartonDelete = @($pendingDeletes | Where-Object { $_.Status -ge 20 })
+            if ($needCartonDelete.Count -gt 0) {
+                $gfids        = "'" + (($needCartonDelete | Select-Object -ExpandProperty Gfid) -join "','") + "'"
+                $cartonResult = Invoke-PlinkQuery -Sql "DELETE FROM rdvcartonhead WHERE OGFID IN ($gfids);"
+                $cartonStr    = $cartonResult -join "`n"
+                if ($cartonStr -match "ERROR") {
+                    Update-UI "`r`nSQL ERROR deleting cartons: $cartonStr`r`n" -AlwaysShow
+                    foreach ($p in $pendingDeletes) { $tableData.Add([PSCustomObject]@{ Order=$p.Order; Status=$p.Status; Loc=$p.Loc; Carrier=$p.Carrier; OD="--"; Action="FAILED (Carton Error)"; IsNone=1 }) }
+                    $pendingDeletes.Clear()
+                }
+            }
+
+            if ($pendingDeletes.Count -gt 0) {
+                if ($ctx.OverrideWave) {
+                    $deleteGfids  = "'" + (($pendingDeletes | Select-Object -ExpandProperty Gfid) -join "','") + "'"
+                    $deleteResult = Invoke-PlinkQuery -Sql "DELETE FROM rdvorderhead WHERE GFID IN ($deleteGfids);"
+                } else {
+                    $deleteIds    = "'" + (($pendingDeletes | Select-Object -ExpandProperty Base | Select-Object -Unique) -join "','") + "'"
+                    $deleteResult = Invoke-PlinkQuery -Sql "DELETE FROM rdvorderhead WHERE ID IN ($deleteIds) AND Status = '10';"
+                }
+                $deleteStr = $deleteResult -join "`n"
+
+                if ($deleteStr -match "ERROR") {
+                    Update-UI "`r`nSQL ERROR: $deleteStr`r`n" -AlwaysShow
+                    foreach ($p in $pendingDeletes) { $tableData.Add([PSCustomObject]@{ Order=$p.Order; Status=$p.Status; Loc=$p.Loc; Carrier=$p.Carrier; OD="--"; Action="FAILED (SQL Error)"; IsNone=1 }) }
+                } else {
+                    foreach ($p in $pendingDeletes) { $tableData.Add([PSCustomObject]@{ Order=$p.Order; Status=$p.Status; Loc=$p.Loc; Carrier=$p.Carrier; OD="--"; Action="DELETED"; IsNone=1 }) }
+                }
             }
         }
     } elseif ($ctx.IsStatusCheck) {
@@ -744,7 +793,11 @@ VALUES
         Update-UI "[3/4] Status Check Mode: Bypassing DTS/Abhive sync.`r`n"
         Update-UI "[4/4] Querying order statuses... " -Status "Checking statuses..."
 
-        $safeBases = $parsedOrders.Base | Where-Object { $_ -match '^\d{8}$' } | Select-Object -Unique
+        $safeBases = $parsedOrders.Base | Where-Object { $_ -match '^\d{8}$|^\d{10}$' } | Select-Object -Unique
+        if (@($safeBases).Count -eq 0) {
+            Update-UI "`r`nERROR: No valid order numbers found for database query.`r`n" -AlwaysShow
+            return
+        }
         $inClause  = "'" + ($safeBases -join "','") + "'"
         $dbRows    = Invoke-PlinkQuery -Sql "SELECT ID, BO, Status, PULID, Typ, CGFID FROM rdvorderhead WHERE ID IN ($inClause);"
         if ($dbRows -join "`n" -match "ERROR") { Update-UI "`r`nCRITICAL ERROR: Failed to query DB statuses.`r`n" -AlwaysShow; return }
@@ -767,7 +820,7 @@ VALUES
             }
             $existing  = $existingOrders[$order.FullOrder]
             $dbLoc     = if ($PidToLoc.ContainsKey($existing.Pulid)) { $PidToLoc[$existing.Pulid] } else { "--" }
-            $dbTag     = if ($typToTag.ContainsKey($existing.Typ)) { $typToTag[$existing.Typ] } else { "--" }
+            $dbTag     = if ($TypToTag.ContainsKey($existing.Typ)) { $TypToTag[$existing.Typ] } else { "--" }
             $dbCarrier = if ($cgfidToCarrier.ContainsKey($existing.CgfId)) { $cgfidToCarrier[$existing.CgfId] } else { $existing.CgfId }
             $tableData.Add([PSCustomObject]@{ Order=$order.FullOrder; Status=$existing.Status; Loc=$dbLoc; Carrier=$dbCarrier; OD=$dbTag; Action="--"; IsNone=1 })
         }
@@ -778,7 +831,11 @@ VALUES
         Update-UI "[3/4] Order Table Mode: Bypassing DTS/Abhive sync.`r`n"
         Update-UI "[4/4] Querying order table entries... " -Status "Querying table..."
 
-        $safeBases = $parsedOrders.Base | Where-Object { $_ -match '^\d{8}$' } | Select-Object -Unique
+        $safeBases = $parsedOrders.Base | Where-Object { $_ -match '^\d{8}$|^\d{10}$' } | Select-Object -Unique
+        if (@($safeBases).Count -eq 0) {
+            Update-UI "`r`nERROR: No valid order numbers found for database query.`r`n" -AlwaysShow
+            return
+        }
         $inClause  = "'" + ($safeBases -join "','") + "'"
         $dbRows    = Invoke-PlinkQuery -Sql "SELECT GFID, PULID, Brand, ID, ID2, BO, SChan, SULID, PGFID, OrderHostCode, PricePfx, PriceSfx, Typ, PO, Customer, BillToCode, ShipTo, ShipToCode, CtnQty, LnQty, ItemQty, CtnPicked, CtnPacked, UnixOrder, UnixPickup, UnixShip, UnixDelivery, CGFID, Tracking, Note, Msg, Confirmed, Status, UnixCreated, CreatedBy, UnixDropped, DroppedBy, UnixShipped, ShippedBy, UnixLast, LastBy, LastFGFID FROM rdvorderhead WHERE ID IN ($inClause);"
         if ($dbRows -join "`n" -match "ERROR") { Update-UI "`r`nCRITICAL ERROR: Failed to query rdvorderhead.`r`n" -AlwaysShow; return }
@@ -815,9 +872,13 @@ VALUES
         $uniqueBases = $parsedOrders.Base | Select-Object -Unique
 
         $existingOrders = @{}
-        $safeBases = $uniqueBases | Where-Object { $_ -match '^\d{8}$' }
+        $safeBases = $uniqueBases | Where-Object { $_ -match '^\d{8}$|^\d{10}$' }
+        if (@($safeBases).Count -eq 0) {
+            Update-UI "`r`nERROR: No valid order numbers found for database query.`r`n" -AlwaysShow
+            return
+        }
         $inClause = "'" + ($safeBases -join "','") + "'"
-        
+
         $dbRows = Invoke-PlinkQuery -Sql "SELECT ID, BO, Status, PULID, Typ, CGFID FROM rdvorderhead WHERE ID IN ($inClause);"
         if ($dbRows -join "`n" -match "ERROR") { Update-UI "`r`nCRITICAL ERROR: Failed to query existing DB statuses.`r`n" -AlwaysShow; return }
         foreach ($row in $dbRows) {
@@ -864,24 +925,24 @@ VALUES
                             $idxWH = $hMap["WH"]; $idxCarrier = $hMap["Carrier/Service"]; $idxOrderCode = $hMap["Order Code"]; $idxCustNum = $hMap["Cust Number"]
                             $idxBO = $hMap["BO"]
                             if ($null -eq $idxBO) { $idxBO = $hMap["Bo"] }
-                            if ($null -eq $idxBO) { $idxBO = $hMap["Order Suffix"] } 
-                            
+                            if ($null -eq $idxBO) { $idxBO = $hMap["Order Suffix"] }
+
                             while ($null -ne ($line = $reader.ReadLine())) {
                                 if ([string]::IsNullOrWhiteSpace($line)) { continue }
                                 $cols = $line -split ','
-                                
+
                                 $orderRaw = if ($idxOrder -ne $null -and $idxOrder -lt $cols.Length) { $cols[$idxOrder].Trim('"').Trim() } else { "" }
                                 $boRaw = if ($idxBO -ne $null -and $idxBO -lt $cols.Length) { $cols[$idxBO].Trim('"').Trim() } else { "" }
-                                
+
                                 $orderFull = $null
-                                if ($orderRaw -match '^(\d{8})[-_]?(\d{2})$') { 
-                                    $orderFull = "$($Matches[1])-$($Matches[2])" 
-                                } elseif ($orderRaw -match '^(\d{8})$' -and $boRaw -match '^\d{1,2}$') { 
-                                    $orderFull = "$orderRaw-$("{0:D2}" -f [int]$boRaw)" 
-                                } elseif ($orderRaw -match '^(\d{8})$') { 
-                                    $orderFull = "$orderRaw-00" 
+                                if ($orderRaw -match '^(\d{10}|\d{8})[-_]?(\d{2})$') {
+                                    $orderFull = "$($Matches[1])-$($Matches[2])"
+                                } elseif ($orderRaw -match '^(\d{10}|\d{8})$' -and $boRaw -match '^\d{1,2}$') {
+                                    $orderFull = "$orderRaw-$("{0:D2}" -f [int]$boRaw)"
+                                } elseif ($orderRaw -match '^(\d{10}|\d{8})$') {
+                                    $orderFull = "$orderRaw-00"
                                 }
-                                
+
                                 if ($orderFull -and $targetLookup.ContainsKey($orderFull)) {
                                     $isHazmat = if ($idxHazmat -ne $null -and $idxHazmat -lt $cols.Length) { $cols[$idxHazmat].Trim('"') -match "Y|1|True" } else { $false }
                                     $isGift   = if ($idxGift -ne $null -and $idxGift -lt $cols.Length) { $cols[$idxGift].Trim('"') -match "Y|1|True" } else { $false }
@@ -934,17 +995,17 @@ VALUES
                             while ($null -ne ($line = $reader.ReadLine())) {
                                 if ([string]::IsNullOrWhiteSpace($line)) { continue }
                                 $cols = $line -split ','
-                                
+
                                 $orderNum = if ($idxOrder -ne $null -and $idxOrder -lt $cols.Length) { $cols[$idxOrder].Trim('"').Trim() } else { "" }
                                 $boNum = if ($idxBO -ne $null -and $idxBO -lt $cols.Length) { $cols[$idxBO].Trim('"').Trim() } else { "" }
-                                
+
                                 $orderFull = $null
-                                if ($orderNum -match '^(\d{8})[-_]?(\d{2})$') { 
-                                    $orderFull = "$($Matches[1])-$($Matches[2])" 
-                                } elseif ($orderNum -match '^(\d{8})$' -and $boNum -match '^\d{1,2}$') { 
-                                    $orderFull = "$orderNum-$("{0:D2}" -f [int]$boNum)" 
-                                } elseif ($orderNum -match '^(\d{8})$') { 
-                                    $orderFull = "$orderNum-00" 
+                                if ($orderNum -match '^(\d{10}|\d{8})[-_]?(\d{2})$') {
+                                    $orderFull = "$($Matches[1])-$($Matches[2])"
+                                } elseif ($orderNum -match '^(\d{10}|\d{8})$' -and $boNum -match '^\d{1,2}$') {
+                                    $orderFull = "$orderNum-$("{0:D2}" -f [int]$boNum)"
+                                } elseif ($orderNum -match '^(\d{10}|\d{8})$') {
+                                    $orderFull = "$orderNum-00"
                                 }
 
                                 if ($orderFull -and $targetLookup.ContainsKey($orderFull)) {
@@ -1087,9 +1148,9 @@ VALUES
             $safeGfid  = "305" + (Get-Date -Format "yyMMddHHmmss") + "{0:D3}" -f $insertCounter
 
             $insertQuery = @"
-INSERT INTO rdvorderhead 
-(GFID, PULID, Brand, ID, ID2, BO, SChan, SULID, PGFID, OrderHostCode, PricePfx, PriceSfx, Typ, PO, Customer, BillToCode, ShipTo, ShipToCode, CtnQty, LnQty, ItemQty, CtnPicked, CtnPacked, UnixOrder, UnixPickup, UnixShip, UnixDelivery, CGFID, Tracking, Note, Msg, Confirmed, Status, UnixCreated, CreatedBy, UnixDropped, DroppedBy, UnixShipped, ShippedBy, UnixLast, LastBy, LastFGFID) 
-VALUES 
+INSERT INTO rdvorderhead
+(GFID, PULID, Brand, ID, ID2, BO, SChan, SULID, PGFID, OrderHostCode, PricePfx, PriceSfx, Typ, PO, Customer, BillToCode, ShipTo, ShipToCode, CtnQty, LnQty, ItemQty, CtnPicked, CtnPacked, UnixOrder, UnixPickup, UnixShip, UnixDelivery, CGFID, Tracking, Note, Msg, Confirmed, Status, UnixCreated, CreatedBy, UnixDropped, DroppedBy, UnixShipped, ShippedBy, UnixLast, LastBy, LastFGFID)
+VALUES
 ('$safeGfid', '$activePid', '$($Config.BrandGfid)', '$base', '', '$boInt', '$schan', '$sulid', '0', '', '', '', '$pstr', '', '', '', '', '', '0', '0', '0', '0', '0', '$unixMidnightUtc', '$unixMidnightUtc', '0', '$unixMidnightUtc', '$rstr', '', '', '', '0', '10', '$unixCurrentTime', '$userUlid', '0', '', '0', '', '0', '', '0');
 "@
             $pendingInserts.Add([PSCustomObject]@{ Query=$insertQuery; Order=$order.FullOrder; Loc=$displayLoc; Carrier=$cleanCarrier; Tag=if ($tag -eq "DTS") { "REPLEN" } else { $tag } })
@@ -1112,7 +1173,7 @@ VALUES
                 }
             }
         }
-        
+
         foreach ($row in $tableData) {
             if ($row.Action -match "Added to CSV|In Wave") { $inWaveCount++ }
             if (-not [string]::IsNullOrWhiteSpace($row.Loc) -and $row.Loc -notmatch "--|N/A") { $locationsUsed.Add($row.Loc) }
@@ -1170,7 +1231,7 @@ VALUES
     }
 
     Update-UI "`r`nExecution finished.`r`n" -AlwaysShow
-    
+
     if ($createCsv -and $csvOrders.Count -gt 0) {
         $csvDir = Join-Path $env:USERPROFILE "Downloads"
         if (-not (Test-Path $csvDir)) { New-Item -ItemType Directory -Path $csvDir -Force | Out-Null }
@@ -1187,7 +1248,7 @@ VALUES
     }
 
     Save-History -TotalOrders $parsedOrders.Count -Waved $wavedCount -AlreadyInWave $inWaveCount -Locations ($locationsUsed.ToArray())
-    
+
     $lastRunData = @($sortedData | Where-Object { $_.Action -match "(?i)WAVED|Add(ed)? to CSV|In Wave|Already in Wave" } | Select-Object Order, Loc)
     $resultQueue.Enqueue(@{ LastRunData = $lastRunData })
 }
@@ -1291,7 +1352,7 @@ VALUES
  $counterTimer.Interval = 300
  $counterTimer.Add_Tick({
     $counterTimer.Stop()
-    $r = [regex]'\b(\d{8})(?:[-_]?(\d{2}))?\b'
+    $r = [regex]'\b(\d{10}|\d{8})(?:[-_]?(\d{2}))?\b'
     $fullOrders = $r.Matches($inputTextBox.Text) | ForEach-Object {
         $base   = $_.Groups[1].Value
         $suffix = if ($_.Groups[2].Success) { $_.Groups[2].Value } else { "00" }
@@ -1408,7 +1469,18 @@ VALUES
  $statusStrip.Items.Add($statusLabel) | Out-Null
  $statusStrip.Items.Add($creditLabel) | Out-Null
 
- $mainForm.Controls.AddRange(@($lblUser, $txtUser, $lblSshPass, $txtSshPass, $lblDbPass, $txtDbPass, $lblUlid, $txtUlid, $inputLabel, $inputTextBox, $createCsvCheckbox, $openCsvCheckbox, $processButton, $copyOrdersButton, $modeLabel, $modeDropdown, $outputLabel, $outputTextBox, $orderGrid, $stsPanel, $statusStrip))
+ $chkOverride = New-Object System.Windows.Forms.CheckBox
+ $chkOverride.Text = "Override Wave restriction"
+ $chkOverride.Location = New-Object System.Drawing.Point(365, 503)
+ $chkOverride.Size = New-Object System.Drawing.Size(200, 20)
+ $chkOverride.ForeColor = [System.Drawing.Color]::Firebrick
+ $chkOverride.Font = New-Object System.Drawing.Font("Segoe UI", 8, [System.Drawing.FontStyle]::Bold)
+ $chkOverride.Visible = $false
+ $chkOverride.Anchor = [System.Windows.Forms.AnchorStyles]::Bottom -bor [System.Windows.Forms.AnchorStyles]::Left
+
+ $mainForm.Controls.Add($chkOverride)
+
+ $mainForm.Controls.AddRange(@($lblUser, $txtUser, $lblSshPass, $txtSshPass, $lblDbPass, $txtDbPass, $lblUlid, $txtUlid, $inputLabel, $inputTextBox, $createCsvCheckbox, $openCsvCheckbox, $processButton, $copyOrdersButton, $modeLabel, $modeDropdown, $outputLabel, $outputTextBox, $orderGrid, $chkOverride, $stsPanel, $statusStrip))
 
  $modeDropdown.Add_SelectedIndexChanged({
     $rightWidth = $mainForm.ClientSize.Width - 190 - 10
@@ -1431,6 +1503,8 @@ VALUES
     $outputTextBox.Clear()
     $orderGrid.Columns.Clear()
     $orderGrid.Rows.Clear()
+    $chkOverride.Visible = ($modeDropdown.SelectedItem -eq "Delete")
+    $chkOverride.Checked = $false
     $isDelete = ($modeDropdown.SelectedItem -eq "Delete") -or ($modeDropdown.SelectedItem -eq "Status Check") -or ($modeDropdown.SelectedItem -eq "Order Table")
     $createCsvCheckbox.Enabled = -not $isDelete
     $openCsvCheckbox.Enabled   = (-not $isDelete) -and $createCsvCheckbox.Checked
@@ -1559,7 +1633,7 @@ function Set-BatchSizeChecks {
  $script:uiTimer.Add_Tick({
     $msg = $null
     while ($script:statusQueue.TryDequeue([ref]$msg)) { $statusLabel.Text = $msg }
-    
+
     $sb = New-Object System.Text.StringBuilder
     while ($script:uiQueue.TryDequeue([ref]$msg)) { [void]$sb.Append($msg) }
     if ($sb.Length -gt 0) {
@@ -1596,7 +1670,7 @@ function Set-BatchSizeChecks {
         $script:bgHandle = $null
         $script:bgRunspace = $null
         $script:bgPowerShell = $null
-        
+
         $processButton.Enabled = $true
         $copyOrdersButton.Enabled = ($script:lastRunData.Count -gt 0)
         $statusLabel.Text = "Idle"
@@ -1606,7 +1680,7 @@ function Set-BatchSizeChecks {
 
  $processButton.Add_Click({
     if ($script:bgHandle -ne $null -and -not $script:bgHandle.IsCompleted) { return }
-    
+
     $processButton.Enabled = $false
     $copyOrdersButton.Enabled = $false
     $outputTextBox.Clear()
@@ -1635,6 +1709,12 @@ function Set-BatchSizeChecks {
         return
     }
 
+    if ($userUlid -notmatch '^[0-9A-HJKMNP-TV-Z]{26}$') {
+        $outputTextBox.AppendText("ERROR: ULID format is invalid. Expected 26-character ULID (e.g., 01GPY0D43RDM84F371FNNWMTV8).`r`n")
+        $processButton.Enabled = $true
+        return
+    }
+
     Save-Settings
 
     while ($script:uiQueue.TryDequeue([ref]$null)) {}
@@ -1650,7 +1730,7 @@ function Set-BatchSizeChecks {
         IntakeCarrierToCgfid = $script:intakeCarrierToCgfid
         TagToPstr = $script:tagToPstr
         PidToLoc = $script:pidToLoc
-        
+
         User     = $user
         SshPass  = $sshPass
         DbPass   = $dbPass
@@ -1660,13 +1740,14 @@ function Set-BatchSizeChecks {
         OpenCsv = $openCsvCheckbox.Checked
         ScanDepth = $script:scanDepth
         BatchSize = $script:batchSize
-        
+
         uiQueue = $script:uiQueue
         statusQueue = $script:statusQueue
         resultQueue = $script:resultQueue
-        
+
         IsSts         = ($modeDropdown.SelectedItem -eq "Manual")
         IsDelete      = ($modeDropdown.SelectedItem -eq "Delete")
+        OverrideWave  = ($modeDropdown.SelectedItem -eq "Delete" -and $chkOverride.Checked)
         IsStatusCheck = ($modeDropdown.SelectedItem -eq "Status Check")
         IsOrderTable  = ($modeDropdown.SelectedItem -eq "Order Table")
     }
@@ -1680,39 +1761,56 @@ function Set-BatchSizeChecks {
 
     $script:bgRunspace = [runspacefactory]::CreateRunspace()
     $script:bgRunspace.Open()
-    
+
     $script:bgPowerShell = [powershell]::Create()
     $script:bgPowerShell.Runspace = $script:bgRunspace
     $script:bgPowerShell.AddScript($bgScript).AddArgument($ctx) | Out-Null
-    
+
     $script:bgHandle = $script:bgPowerShell.BeginInvoke()
     $script:uiTimer.Start()
 })
 
-Load-Settings
-Set-Language $script:lang
- $menuCreateCsv.Checked   = $createCsvCheckbox.Checked
- $menuOpenCsv.Checked     = $openCsvCheckbox.Checked
- $menuOpenCsv.Enabled     = $createCsvCheckbox.Checked
- $menuAlwaysOnTop.Checked = $mainForm.TopMost
- $menuWordWrap.Checked    = $outputTextBox.WordWrap
-Set-ScanDepthChecks $script:scanDepth
-Set-BatchSizeChecks $script:batchSize
+try {
+    Load-Settings
+    Set-Language $script:lang
+    $menuCreateCsv.Checked   = $createCsvCheckbox.Checked
+    $menuOpenCsv.Checked     = $openCsvCheckbox.Checked
+    $menuOpenCsv.Enabled     = $createCsvCheckbox.Checked
+    $menuAlwaysOnTop.Checked = $mainForm.TopMost
+    $menuWordWrap.Checked    = $outputTextBox.WordWrap
+    Set-ScanDepthChecks $script:scanDepth
+    Set-BatchSizeChecks $script:batchSize
 
- $fs = $outputTextBox.Font.Size
- $menuFontSmall.Checked  = ($fs -le 8)
- $menuFontMedium.Checked = ($fs -eq 9)
- $menuFontLarge.Checked  = ($fs -ge 11)
+    $fs = $outputTextBox.Font.Size
+    $menuFontSmall.Checked  = ($fs -le 8)
+    $menuFontMedium.Checked = ($fs -eq 9)
+    $menuFontLarge.Checked  = ($fs -ge 11)
 
-if ($script:pendingDarkMode) { $menuDarkMode.Checked = $true; Apply-Theme $true }
+    if ($script:pendingDarkMode) { $menuDarkMode.Checked = $true; Apply-Theme $true }
 
- $mainForm.Add_FormClosing({
-    Save-Settings
-    if ($script:bgRunspace) { $script:bgRunspace.Dispose() }
-    if ($script:bgPowerShell) { $script:bgPowerShell.Dispose() }
-})
+    $mainForm.Add_FormClosing({
+        Save-Settings
+        if ($script:bgRunspace) { $script:bgRunspace.Dispose() }
+        if ($script:bgPowerShell) { $script:bgPowerShell.Dispose() }
+    })
 
-Invoke-UpdateCheck
+    $updateTimer = New-Object System.Windows.Forms.Timer
+    $updateTimer.Interval = 1000
+    $updateTimer.Add_Tick({
+        $updateTimer.Stop()
+        Invoke-UpdateCheck
+    })
+    $updateTimer.Start()
 
-[void]$mainForm.ShowDialog()
- $mainForm.Dispose()
+    [void]$mainForm.ShowDialog()
+} catch {
+    Write-ErrorLog -Message "Fatal error during execution" -ErrorRecord $_
+    [System.Windows.Forms.MessageBox]::Show(
+        "A fatal error occurred:`n`n$($_.Exception.Message)`n`nCheck the error log at:`n$($script:Config.ErrorLogPath)",
+        "Fatal Error",
+        [System.Windows.Forms.MessageBoxButtons]::OK,
+        [System.Windows.Forms.MessageBoxIcon]::Error
+    ) | Out-Null
+} finally {
+    $mainForm.Dispose()
+}
