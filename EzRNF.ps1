@@ -1,7 +1,7 @@
 ﻿Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
 
- $currentVersion = "1.12"
+ $currentVersion = "1.13"
  $rawBase        = "https://raw.githubusercontent.com/tyler-eaker/EzRNF/main"
  $scriptPath     = $MyInvocation.MyCommand.Path
 
@@ -73,6 +73,7 @@ function Invoke-UpdateCheck {
     "NV" = "01GRSJYY0X0DQYCHV7Z20APEMF"
     "MD" = "01FWMD304FT9TK0NY2GPWCTZH2"
     "TX" = "01K333QC0Y6CZZEZHZPHZA9D98"
+    "ME" = "01KVAHR3KKRNSEJ5Q4FP3S6AQX"
 }
 
  $script:typToTag = @{
@@ -565,7 +566,7 @@ function Apply-Theme {
     }
 
     $parsedOrdersList = New-Object System.Collections.Generic.List[PSCustomObject]
-    $regex = [regex]'\b(1\d{9}|\d{8})(?:[-_]?(\d{2}))?\b'
+    $regex = [regex]'\b(1\d{9}|3\d{11}|\d{8})(?:[-_]?(\d{2}))?\b'
     foreach ($match in $regex.Matches($ctx.OrdersText)) {
         $base   = $match.Groups[1].Value
         $suffix = if ($match.Groups[2].Success) { $match.Groups[2].Value } else { "00" }
@@ -642,7 +643,7 @@ function Apply-Theme {
         Update-UI "[4/4] Processing final database operations... " -Status "Executing DB operations..."
 
         $existingOrders = @{}
-        $safeBases = $parsedOrders.Base | Where-Object { $_ -match '^\d{8}$|^1\d{9}$' } | Select-Object -Unique
+        $safeBases = $parsedOrders.Base | Where-Object { $_ -match '^\d{8}$|^1\d{9}$|^3\d{11}$' } | Select-Object -Unique
         if (@($safeBases).Count -eq 0) {
             Update-UI "`r`nERROR: No valid order numbers found for database query.`r`n" -AlwaysShow
             return
@@ -718,7 +719,7 @@ VALUES
         Update-UI "[4/4] Checking order statuses... " -Status "Checking statuses..."
 
         $existingOrders = @{}
-        $safeBases = $parsedOrders.Base | Where-Object { $_ -match '^\d{8}$|^1\d{9}$' } | Select-Object -Unique
+        $safeBases = $parsedOrders.Base | Where-Object { $_ -match '^\d{8}$|^1\d{9}$|^3\d{11}$' } | Select-Object -Unique
         if (@($safeBases).Count -eq 0) {
             Update-UI "`r`nERROR: No valid order numbers found for database query.`r`n" -AlwaysShow
             return
@@ -793,7 +794,7 @@ VALUES
         Update-UI "[3/4] Status Check Mode: Bypassing DTS/Abhive sync.`r`n"
         Update-UI "[4/4] Querying order statuses... " -Status "Checking statuses..."
 
-        $safeBases = $parsedOrders.Base | Where-Object { $_ -match '^\d{8}$|^1\d{9}$' } | Select-Object -Unique
+        $safeBases = $parsedOrders.Base | Where-Object { $_ -match '^\d{8}$|^1\d{9}$|^3\d{11}$' } | Select-Object -Unique
         if (@($safeBases).Count -eq 0) {
             Update-UI "`r`nERROR: No valid order numbers found for database query.`r`n" -AlwaysShow
             return
@@ -831,7 +832,7 @@ VALUES
         Update-UI "[3/4] Order Table Mode: Bypassing DTS/Abhive sync.`r`n"
         Update-UI "[4/4] Querying order table entries... " -Status "Querying table..."
 
-        $safeBases = $parsedOrders.Base | Where-Object { $_ -match '^\d{8}$|^1\d{9}$' } | Select-Object -Unique
+        $safeBases = $parsedOrders.Base | Where-Object { $_ -match '^\d{8}$|^1\d{9}$|^3\d{11}$' } | Select-Object -Unique
         if (@($safeBases).Count -eq 0) {
             Update-UI "`r`nERROR: No valid order numbers found for database query.`r`n" -AlwaysShow
             return
@@ -872,7 +873,7 @@ VALUES
         $uniqueBases = $parsedOrders.Base | Select-Object -Unique
 
         $existingOrders = @{}
-        $safeBases = $uniqueBases | Where-Object { $_ -match '^\d{8}$|^1\d{9}$' }
+        $safeBases = $uniqueBases | Where-Object { $_ -match '^\d{8}$|^1\d{9}$|^3\d{11}$' }
         if (@($safeBases).Count -eq 0) {
             Update-UI "`r`nERROR: No valid order numbers found for database query.`r`n" -AlwaysShow
             return
@@ -943,6 +944,14 @@ VALUES
                                     } else {
                                         $orderFull = "$orderRaw-00"
                                     }
+                                } elseif ($orderRaw -match '^(3\d{11})[-_]?(\d{2})$') {
+                                    $orderFull = "$($Matches[1])-$($Matches[2])"
+                                } elseif ($orderRaw -match '^3\d{11}$') {
+                                    if ($boRaw -match '^\d{1,2}$') {
+                                        $orderFull = "$orderRaw-$("{0:D2}" -f [int]$boRaw)"
+                                    } else {
+                                        $orderFull = "$orderRaw-00"
+                                    }
                                 } elseif ($orderRaw -match '^(\d{8})[-_]?(\d{2})$') {
                                     $orderFull = "$($Matches[1])-$($Matches[2])"
                                 } elseif ($orderRaw -match '^\d{8}$' -and $boRaw -match '^\d{1,2}$') {
@@ -961,7 +970,7 @@ VALUES
                                             Carrier   = if ($idxCarrier -ne $null -and $idxCarrier -lt $cols.Length) { $cols[$idxCarrier].Trim('"') } else { "" }
                                             OrderCode = if ($idxOrderCode -ne $null -and $idxOrderCode -lt $cols.Length) { $cols[$idxOrderCode].Trim('"') } else { "" }
                                             IsHazmat  = $isHazmat; IsGift = $isGift
-                                            Loc       = switch ($wh) { "av" {"NV"} "am" {"MD"} "at" {"TX"} default {"N/A"} }
+                                            Loc       = switch ($wh) { "av" {"NV"} "am" {"MD"} "at" {"TX"} "me" {"ME"} default {"N/A"} }
                                             Source    = "carton"
                                             CustNum   = if ($idxCustNum -ne $null -and $idxCustNum -lt $cols.Length) { $cols[$idxCustNum].Trim('"') } else { "" }
                                             Ctry      = ""
@@ -1016,6 +1025,14 @@ VALUES
                                     } else {
                                         $orderFull = "$orderNum-00"
                                     }
+                                } elseif ($orderNum -match '^(3\d{11})[-_]?(\d{2})$') {
+                                    $orderFull = "$($Matches[1])-$($Matches[2])"
+                                } elseif ($orderNum -match '^3\d{11}$') {
+                                    if ($boNum -match '^\d{1,2}$') {
+                                        $orderFull = "$orderNum-$("{0:D2}" -f [int]$boNum)"
+                                    } else {
+                                        $orderFull = "$orderNum-00"
+                                    }
                                 } elseif ($orderNum -match '^(\d{8})[-_]?(\d{2})$') {
                                     $orderFull = "$($Matches[1])-$($Matches[2])"
                                 } elseif ($orderNum -match '^\d{8}$' -and $boNum -match '^\d{1,2}$') {
@@ -1034,7 +1051,7 @@ VALUES
                                             Carrier   = $intakeCarrier
                                             OrderCode = if ($idxOrderCode -ne $null -and $idxOrderCode -lt $cols.Length) { $cols[$idxOrderCode].Trim('"') } else { "" }
                                             IsHazmat  = $false; IsGift = $false
-                                            Loc       = switch ($wh) { "AV" {"NV"} "AM" {"MD"} "AT" {"TX"} "ATC" {"TX"} default {"N/A"} }
+                                            Loc       = switch ($wh) { "AV" {"NV"} "AM" {"MD"} "AT" {"TX"} "ATC" {"TX"} "ME" {"ME"} default {"N/A"} }
                                             Ctry      = $ctry; Source = "intake"; CustNum = $addrNo
                                         }
                                         $foundInThisFile++
@@ -1199,9 +1216,9 @@ VALUES
     Update-UI " Done!`r`n`r`n" -Status "Rendering results..."
 
     if (-not $ctx.IsOrderTable) {
-        $lineFormat = "{0,-14}{1,-8}{2,-6}{3,-18}{4,-16}{5}`r`n"
+        $lineFormat = "{0,-18}{1,-8}{2,-6}{3,-20}{4,-16}{5}`r`n"
         Update-UI ($lineFormat -f "Order:", "Status:", "Loc:", "Carrier:", "OD:", "Action:")
-        Update-UI ("-" * 80 + "`r`n")
+        Update-UI ("-" * 100 + "`r`n")
 
         $sortProps = @(
             @{ Expression = {
@@ -1214,7 +1231,8 @@ VALUES
                 if ($_.Loc -eq "MD") { 0 }
                 elseif ($_.Loc -eq "TX") { 1 }
                 elseif ($_.Loc -eq "NV") { 2 }
-                else { 3 }
+                elseif ($_.Loc -eq "ME") { 3 }
+                else { 4 }
               }; Ascending = $true },
             @{ Expression = { try { [int]$_.Status } catch { 0 } }; Ascending = $false },
             @{ Expression = {
@@ -1234,7 +1252,7 @@ VALUES
         $deletedCount = @($tableData | Where-Object { $_.Action -eq "DELETED" }).Count
         $skippedCount = @($tableData | Where-Object { $_.Action -match "Cannot Delete|Manual Wave|Unknown WH|Missing Abhive|Skipped|Not Found" }).Count
         $noneCount    = @($tableData | Where-Object { $_.Action -eq "None" }).Count
-        Update-UI "`r`n$("-" * 80)`r`n"
+        Update-UI "`r`n$("-" * 100)`r`n"
         if ($ctx.IsDelete) {
             Update-UI ("Deleted: $deletedCount  |  Cannot Delete: $($skippedCount)  |  Not Found: $(@($tableData | Where-Object { $_.Action -eq 'Not Found' }).Count)  |  Errors: $failedCount`r`n")
         } elseif ($ctx.IsStatusCheck) {
@@ -1368,7 +1386,7 @@ VALUES
  $counterTimer.Interval = 300
  $counterTimer.Add_Tick({
     $counterTimer.Stop()
-    $r = [regex]'\b(1\d{9}|\d{8})(?:[-_]?(\d{2}))?\b'
+    $r = [regex]'\b(1\d{9}|3\d{11}|\d{8})(?:[-_]?(\d{2}))?\b'
     $fullOrders = $r.Matches($inputTextBox.Text) | ForEach-Object {
         $base   = $_.Groups[1].Value
         $suffix = if ($_.Groups[2].Success) { $_.Groups[2].Value } else { "00" }
@@ -1459,7 +1477,8 @@ VALUES
 
  $stsLocLabel = New-Object System.Windows.Forms.Label; $stsLocLabel.Location = New-Object System.Drawing.Point(0, 5); $stsLocLabel.Size = New-Object System.Drawing.Size(60, 15); $stsLocLabel.Text = "Location:"
  $stsLocDropdown = New-Object System.Windows.Forms.ComboBox; $stsLocDropdown.Location = New-Object System.Drawing.Point(0, 22); $stsLocDropdown.Size = New-Object System.Drawing.Size(100, 22); $stsLocDropdown.DropDownStyle = [System.Windows.Forms.ComboBoxStyle]::DropDownList
- $stsLocDropdown.Items.AddRange(@("NV", "MD", "TX"))
+
+ $stsLocDropdown.Items.AddRange(@("NV", "MD", "TX", "ME"))
  $stsLocDropdown.SelectedIndex = 0
 
  $stsCarrierLabel = New-Object System.Windows.Forms.Label; $stsCarrierLabel.Location = New-Object System.Drawing.Point(120, 5); $stsCarrierLabel.Size = New-Object System.Drawing.Size(60, 15); $stsCarrierLabel.Text = "Carrier:"
