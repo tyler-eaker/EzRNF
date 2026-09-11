@@ -5,6 +5,8 @@ Add-Type -AssemblyName System.Drawing
  $rawBase        = "https://raw.githubusercontent.com/tyler-eaker/EzRNF/main"
  $scriptPath     = $MyInvocation.MyCommand.Path
 
+ Write-Host "EzRNF Version $currentVersion"
+
 function Invoke-UpdateCheck {
     param([switch]$ManualCheck)
     try {
