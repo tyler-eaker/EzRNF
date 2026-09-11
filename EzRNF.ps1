@@ -1,11 +1,9 @@
 ﻿Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
 
- $currentVersion = "1.13"
+ $currentVersion = "1.14"
  $rawBase        = "https://raw.githubusercontent.com/tyler-eaker/EzRNF/main"
  $scriptPath     = $MyInvocation.MyCommand.Path
-
-Write-Host "EzRNF Version $currentVersion"
 
 function Invoke-UpdateCheck {
     param([switch]$ManualCheck)
@@ -67,24 +65,12 @@ function Invoke-UpdateCheck {
  $script:lastRunData    = @()
  $script:scanDepth      = 24
  $script:batchSize      = 3
- $script:lang           = "EN"
 
  $script:locationPids = @{
     "NV" = "01GRSJYY0X0DQYCHV7Z20APEMF"
     "MD" = "01FWMD304FT9TK0NY2GPWCTZH2"
     "TX" = "01K333QC0Y6CZZEZHZPHZA9D98"
     "ME" = "01KVAHR3KKRNSEJ5Q4FP3S6AQX"
-}
-
- $script:typToTag = @{
-    "274186969883621376" = "XFER"
-    "14000000000000310"  = "REPLEN"
-    "14000000000000320"  = "LAUNCH"
-    "14000000000000325"  = "GWP"
-    "14000000000000370"  = "NEW"
-    "14000000000000380"  = "WEB"
-    "14000000000000381"  = "WEB Spc"
-    "14000000000000382"  = "WEB Intl"
 }
 
  $script:countryToCarrierGfid = @{
@@ -116,27 +102,6 @@ function Invoke-UpdateCheck {
     "FEDEX GROUND"="10000000000001602"; "DHL_EXPRESS_DDP"="10000000000001601"
 }
 
- $script:tagToPstr = @{
-    "WEB"="14000000000000380"; "WEB Spc"="14000000000000381"; "WEB Intl"="14000000000000382"
-    "REPLEN"="14000000000000310"; "LAUNCH"="14000000000000320"; "GWP"="14000000000000325"; "NEW"="14000000000000370"
-}
-
- $script:stsCarrierToCgfid = @{
-    "DHL"          = "10000000000001601"
-    "FedEx Air"    = "10000000000001650"
-    "FEDEX GROUND" = "10000000000001602"
-    "Geodis UK"    = "10000000000001660"
-    "GLOBALEF"     = "296246482205620224"
-    "PURLTR EXPRS" = "287555332212797440"
-    "Shipium01"    = "295570239302875136"
-    "Shipium02"    = "295570271917783040"
-    "Shipium05"    = "295570292872525824"
-    "TechTrans"    = "10000000000001605"
-    "UPS"          = "10000000000001663"
-    "UPS 2nd Day"  = "10000000000001608"
-    "UPS Ground"   = "10000000000001609"
-}
-
  $script:pidToLoc = @{}
 foreach ($k in $script:locationPids.Keys) { $script:pidToLoc[$script:locationPids[$k]] = $k }
 
@@ -151,153 +116,6 @@ function Write-ErrorLog {
         $entry += "`r`n"
         Add-Content -Path $script:Config.ErrorLogPath -Value $entry
     } catch { }
-}
-
- $script:strings = @{
-    EN = @{
-        LblUser         = "SSH Username:"
-        LblSshPass      = "SSH Password:"
-        LblDbPass       = "MariaDB Password:"
-        LblUlid         = "Your ULID:"
-        LblInput        = "Paste Orders:"
-        LblOutput       = "System Output:"
-        LblMode         = "Mode:"
-        LblLoc          = "Location:"
-        LblCarrier      = "Carrier:"
-        LblOrderType    = "Order Type:"
-        ChkCreateCsv    = "Create CSV when finished"
-        ChkOpenCsv      = "Open CSV when finished"
-        BtnProcess      = "Process Orders"
-        BtnCopy         = "Copy Orders"
-        BtnStsProcess   = "Wave STS Orders"
-        MenuView        = "View"
-        MenuClearOutput = "Clear Output"
-        MenuClearInput  = "Clear Input"
-        MenuAlwaysOnTop = "Always on Top"
-        MenuWordWrap    = "Word Wrap"
-        MenuScrollBot   = "Scroll to Bottom"
-        MenuDarkMode    = "Dark Mode"
-        MenuFontSize    = "Font Size"
-        MenuFontSmall   = "Small (8pt)"
-        MenuFontMedium  = "Medium (9pt)"
-        MenuFontLarge   = "Large (11pt)"
-        MenuOptions     = "Options"
-        MenuCreateCsv   = "Create CSV"
-        MenuOpenCsv     = "Open CSV"
-        MenuScanDepth   = "Archive Scan Depth"
-        MenuScan12      = "12 files (~12 hrs)"
-        MenuScan24      = "24 files (~24 hrs)"
-        MenuScan48      = "48 files (~48 hrs)"
-        MenuBatchSize   = "Batch Size"
-        MenuBatch1      = "1 file per source"
-        MenuBatch3      = "3 files per source"
-        MenuBatch5      = "5 files per source"
-        MenuTools       = "Tools"
-        MenuHistory     = "Wave History"
-        MenuCheckUpdate = "Check for Update"
-        MenuPlink       = "Check for plink"
-        MenuClearCreds  = "Clear Saved Credentials"
-        MenuLang        = "Language"
-        MenuInfo        = "Info"
-        StsNote         = "STS orders are always waved as B2C with trigram XXX using the selected carrier and type."
-    }
-    ES = @{
-        LblUser         = "Usuario SSH:"
-        LblSshPass      = "Contraseña SSH:"
-        LblDbPass       = "Contraseña MariaDB:"
-        LblUlid         = "Tu ULID:"
-        LblInput        = "Pegar Órdenes:"
-        LblOutput       = "Salida del Sistema:"
-        LblMode         = "Modo:"
-        LblLoc          = "Ubicación:"
-        LblCarrier      = "Transportista:"
-        LblOrderType    = "Tipo de Orden:"
-        ChkCreateCsv    = "Crear CSV al terminar"
-        ChkOpenCsv      = "Abrir CSV al terminar"
-        BtnProcess      = "Procesar Órdenes"
-        BtnCopy         = "Copiar Órdenes"
-        BtnStsProcess   = "Wave Órdenes STS"
-        MenuView        = "Vista"
-        MenuClearOutput = "Limpiar Salida"
-        MenuClearInput  = "Limpiar Entrada"
-        MenuAlwaysOnTop = "Siempre Encima"
-        MenuWordWrap    = "Ajuste de Línea"
-        MenuScrollBot   = "Ir al Final"
-        MenuDarkMode    = "Modo Oscuro"
-        MenuFontSize    = "Tamaño de Fuente"
-        MenuFontSmall   = "Pequeño (8pt)"
-        MenuFontMedium  = "Mediano (9pt)"
-        MenuFontLarge   = "Grande (11pt)"
-        MenuOptions     = "Opciones"
-        MenuCreateCsv   = "Crear CSV"
-        MenuOpenCsv     = "Abrir CSV"
-        MenuScanDepth   = "Profundidad de Búsqueda"
-        MenuScan12      = "12 archivos (~12 hrs)"
-        MenuScan24      = "24 archivos (~24 hrs)"
-        MenuScan48      = "48 archivos (~48 hrs)"
-        MenuBatchSize   = "Tamaño de Lote"
-        MenuBatch1      = "1 archivo por fuente"
-        MenuBatch3      = "3 archivos por fuente"
-        MenuBatch5      = "5 archivos por fuente"
-        MenuTools       = "Herramientas"
-        MenuHistory     = "Historial de Waves"
-        MenuCheckUpdate = "Buscar Actualizaciones"
-        MenuPlink       = "Verificar plink"
-        MenuClearCreds  = "Borrar Credenciales"
-        MenuLang        = "Idioma"
-        MenuInfo        = "Info"
-        StsNote         = "Las órdenes STS siempre se procesan como B2C con trigrama XXX usando el transportista y tipo seleccionados."
-    }
-}
-
-function Set-Language {
-    param([string]$Lang)
-    $script:lang = $Lang
-    $s = $script:strings[$Lang]
-    $lblUser.Text              = $s.LblUser
-    $lblSshPass.Text           = $s.LblSshPass
-    $lblDbPass.Text            = $s.LblDbPass
-    $lblUlid.Text              = $s.LblUlid
-    $inputLabel.Text           = $s.LblInput
-    $outputLabel.Text          = $s.LblOutput
-    $modeLabel.Text            = $s.LblMode
-    $stsLocLabel.Text          = $s.LblLoc
-    $stsCarrierLabel.Text      = $s.LblCarrier
-    $stsTagLabel.Text          = $s.LblOrderType
-    $createCsvCheckbox.Text    = $s.ChkCreateCsv
-    $openCsvCheckbox.Text      = $s.ChkOpenCsv
-    $processButton.Text        = $s.BtnProcess
-    $copyOrdersButton.Text     = $s.BtnCopy
-    $menuView.Text             = $s.MenuView
-    $menuClearOutput.Text      = $s.MenuClearOutput
-    $menuClearInput.Text       = $s.MenuClearInput
-    $menuAlwaysOnTop.Text      = $s.MenuAlwaysOnTop
-    $menuWordWrap.Text         = $s.MenuWordWrap
-    $menuScrollBottom.Text     = $s.MenuScrollBot
-    $menuDarkMode.Text         = $s.MenuDarkMode
-    $menuFontSize.Text         = $s.MenuFontSize
-    $menuFontSmall.Text        = $s.MenuFontSmall
-    $menuFontMedium.Text       = $s.MenuFontMedium
-    $menuFontLarge.Text        = $s.MenuFontLarge
-    $menuOptions.Text          = $s.MenuOptions
-    $menuCreateCsv.Text        = $s.MenuCreateCsv
-    $menuOpenCsv.Text          = $s.MenuOpenCsv
-    $menuScanDepth.Text        = $s.MenuScanDepth
-    $menuScan12.Text           = $s.MenuScan12
-    $menuScan24.Text           = $s.MenuScan24
-    $menuScan48.Text           = $s.MenuScan48
-    $menuBatchSize.Text        = $s.MenuBatchSize
-    $menuBatch1.Text           = $s.MenuBatch1
-    $menuBatch3.Text           = $s.MenuBatch3
-    $menuBatch5.Text           = $s.MenuBatch5
-    $menuTools.Text            = $s.MenuTools
-    $menuWaveHistory.Text      = $s.MenuHistory
-    $menuCheckUpdate.Text      = $s.MenuCheckUpdate
-    $menuCheckPlink.Text       = $s.MenuPlink
-    $menuClearCreds.Text       = $s.MenuClearCreds
-    $menuLang.Text             = $s.MenuLang
-    $menuLangEN.Checked        = ($Lang -eq "EN")
-    $menuLangES.Checked        = ($Lang -eq "ES")
 }
 
 function Save-Settings {
@@ -322,7 +140,6 @@ function Save-Settings {
         FontSize    = $outputTextBox.Font.Size
         ScanDepth   = $script:scanDepth
         BatchSize   = $script:batchSize
-        Language    = $script:lang
         DarkMode    = $menuDarkMode.Checked
     }
     $dir = Split-Path $script:Config.SettingsPath
@@ -349,7 +166,6 @@ function Load-Settings {
         if ($null -ne $s.FontSize -and $s.FontSize -gt 0) {
             $outputTextBox.Font = New-Object System.Drawing.Font("Consolas", [float]$s.FontSize)
         }
-        if ($null -ne $s.Language -and $s.Language -ne "") { $script:lang = $s.Language }
         if ($null -ne $s.DarkMode -and [bool]$s.DarkMode) { $script:pendingDarkMode = $true }
     } catch { Write-ErrorLog -Message "Failed to load settings" -ErrorRecord $_ }
 }
@@ -381,9 +197,12 @@ function Apply-Theme {
         $copyOrdersButton.ResetBackColor(); $copyOrdersButton.ResetForeColor()
         $stsPanel.ResetBackColor()
         $stsLocLabel.ResetForeColor();   $stsCarrierLabel.ResetForeColor(); $stsTagLabel.ResetForeColor()
+        $stsTriagramLabel.ResetForeColor(); $stsSchanLabel.ResetForeColor()
         $stsLocDropdown.ResetBackColor(); $stsLocDropdown.ResetForeColor()
         $stsCarrierDropdown.ResetBackColor(); $stsCarrierDropdown.ResetForeColor()
         $stsTagDropdown.ResetBackColor(); $stsTagDropdown.ResetForeColor()
+        $stsTriagramDropdown.ResetBackColor(); $stsTriagramDropdown.ResetForeColor()
+        $stsSchanDropdown.ResetBackColor(); $stsSchanDropdown.ResetForeColor()
         $modeDropdown.ResetBackColor();  $modeDropdown.ResetForeColor()
         $menuStrip.ResetBackColor();     $menuStrip.ResetForeColor()
         $statusStrip.ResetBackColor();   $statusStrip.ResetForeColor()
@@ -421,9 +240,13 @@ function Apply-Theme {
     $stsLocLabel.ForeColor           = $fg
     $stsCarrierLabel.ForeColor       = $fg
     $stsTagLabel.ForeColor           = $fg
+    $stsTriagramLabel.ForeColor      = $fg
+    $stsSchanLabel.ForeColor         = $fg
     $stsLocDropdown.BackColor        = $ctrl;  $stsLocDropdown.ForeColor        = $fg
     $stsCarrierDropdown.BackColor    = $ctrl;  $stsCarrierDropdown.ForeColor    = $fg
     $stsTagDropdown.BackColor        = $ctrl;  $stsTagDropdown.ForeColor        = $fg
+    $stsTriagramDropdown.BackColor   = $ctrl;  $stsTriagramDropdown.ForeColor   = $fg
+    $stsSchanDropdown.BackColor      = $ctrl;  $stsSchanDropdown.ForeColor      = $fg
     $modeDropdown.BackColor          = $ctrl;  $modeDropdown.ForeColor          = $fg
     $menuStrip.BackColor             = $ctrl;  $menuStrip.ForeColor             = $fg
     $statusStrip.BackColor           = $ctrl;  $statusStrip.ForeColor           = $fg
@@ -435,16 +258,161 @@ function Apply-Theme {
     $orderGrid.AlternatingRowsDefaultCellStyle.BackColor = if ($Dark) { [System.Drawing.Color]::FromArgb(38,38,42) } else { [System.Drawing.Color]::FromArgb(245,245,250) }
 }
 
+function Invoke-UIPlinkQuery {
+    param([string]$Sql, [string]$User, [string]$SshPass, [string]$DbPass)
+    $plinkPath = if ($PSScriptRoot) { Join-Path $PSScriptRoot "plink.exe" } else { ".\plink.exe" }
+    if (-not (Test-Path $plinkPath)) { return "ERROR: plink.exe not found" }
+
+    $tempPassFile = [System.IO.Path]::GetTempFileName()
+    try {
+        $acl = Get-Acl $tempPassFile -ErrorAction Stop
+        $acl.SetAccessRuleProtection($true, $false)
+        $rule = New-Object System.Security.AccessControl.FileSystemAccessRule(
+            [System.Security.Principal.WindowsIdentity]::GetCurrent().Name,
+            [System.Security.AccessControl.FileSystemRights]::FullControl,
+            [System.Security.AccessControl.AccessControlType]::Allow
+        )
+        $acl.AddAccessRule($rule)
+        Set-Acl -Path $tempPassFile -AclObject $acl -ErrorAction Stop
+    } catch { }
+
+    $process = $null
+    try {
+        [System.IO.File]::WriteAllText($tempPassFile, $SshPass)
+        $plinkArgs = "-ssh -P $($script:Config.SshPort) $($User)@$($script:Config.SshHost) -pwfile `"$tempPassFile`" -batch `"/usr/bin/mysql -u root -p`"$($DbPass)`" -D $($script:Config.DbName) -sN`""
+
+        $processInfo = New-Object System.Diagnostics.ProcessStartInfo
+        $processInfo.FileName = $plinkPath
+        $processInfo.Arguments = $plinkArgs
+        $processInfo.RedirectStandardInput = $true
+        $processInfo.RedirectStandardOutput = $true
+        $processInfo.RedirectStandardError = $true
+        $processInfo.UseShellExecute = $false
+        $processInfo.CreateNoWindow = $true
+
+        $process = New-Object System.Diagnostics.Process
+        $process.StartInfo = $processInfo
+        $process.Start() | Out-Null
+
+        $process.StandardInput.WriteLine($Sql)
+        $process.StandardInput.Close()
+
+        $output = $process.StandardOutput.ReadToEnd()
+        $error  = $process.StandardError.ReadToEnd()
+
+        $process.WaitForExit()
+
+        if (-not [string]::IsNullOrWhiteSpace($error) -and $error -notmatch "Using a password on the command line interface can be insecure") {
+            return "ERROR: $error"
+        }
+        return $output -split "`r`n|`n" | Where-Object { $_ -match '\S' }
+    }
+    catch {
+        Write-ErrorLog -Message "Failed to execute UI Plink query" -ErrorRecord $_
+        return "ERROR: $($_.Exception.Message)"
+    }
+    finally {
+        if (Test-Path $tempPassFile) { Remove-Item $tempPassFile -Force -ErrorAction SilentlyContinue }
+        if ($process) { $process.Dispose() }
+    }
+}
+
+function Sync-STSOptions {
+    $user = $txtUser.Text.Trim()
+    $sshPass = $txtSshPass.Text
+    $dbPass = $txtDbPass.Text
+
+    if (-not $user -or -not $sshPass -or -not $dbPass) {
+        [System.Windows.Forms.MessageBox]::Show("Please enter SSH and Database credentials to load Manual options.", "Credentials Required", 0, 48)
+        return
+    }
+
+    $plinkPath = if ($PSScriptRoot) { Join-Path $PSScriptRoot "plink.exe" } else { ".\plink.exe" }
+    if (-not (Test-Path $plinkPath)) {
+        [System.Windows.Forms.MessageBox]::Show("plink.exe not found. Cannot sync options.", "Error", 0, 16)
+        return
+    }
+
+    [System.Windows.Forms.Cursor]::Current = [System.Windows.Forms.Cursors]::WaitCursor
+    $mainForm.Enabled = $false
+
+    try {
+        $triRows = Invoke-UIPlinkQuery -Sql "SELECT HID, ULID FROM abhive WHERE Disabled = 0 AND TGFID = '73003347111573504';" -User $user -SshPass $sshPass -DbPass $dbPass
+        if ($triRows -join "`n" -match "ERROR") { throw "Failed to fetch Triagrams: $triRows" }
+        $triItems = @()
+        $triItems += [PSCustomObject]@{ Text=""; Sulid="" }
+        foreach ($row in $triRows) {
+            $cols = $row -split "`t"
+            if ($cols.Count -ge 2 -and -not [string]::IsNullOrWhiteSpace($cols[0])) {
+                $triItems += [PSCustomObject]@{ Text=$cols[0].Trim(); Sulid=$cols[1].Trim() }
+            }
+        }
+        $stsTriagramDropdown.Items.Clear()
+        $triItems | Sort-Object Text | ForEach-Object { [void]$stsTriagramDropdown.Items.Add($_) }
+        $stsTriagramDropdown.DisplayMember = "Text"
+        if ($stsTriagramDropdown.Items.Count -gt 0) { $stsTriagramDropdown.SelectedIndex = 0 }
+
+        $tagRows = Invoke-UIPlinkQuery -Sql "SELECT Label1, GFID, OrderBy FROM udc WHERE TopGFID = '14000000000000300' AND Chk = 1;" -User $user -SshPass $sshPass -DbPass $dbPass
+        if ($tagRows -join "`n" -match "ERROR") { throw "Failed to fetch Order Types: $tagRows" }
+        $tagItems = @()
+        foreach ($row in $tagRows) {
+            $cols = $row -split "`t"
+            if ($cols.Count -ge 2 -and -not [string]::IsNullOrWhiteSpace($cols[0])) {
+                $ob = if ($cols[2] -match '^\d+$') { [int]$cols[2].Trim() } else { 99999 }
+                $tagItems += [PSCustomObject]@{ Text=$cols[0].Trim(); Typ=$cols[1].Trim(); OrderBy=$ob }
+            }
+        }
+        $stsTagDropdown.Items.Clear()
+        $tagItems | Sort-Object OrderBy, Text | ForEach-Object { [void]$stsTagDropdown.Items.Add($_) }
+        $stsTagDropdown.DisplayMember = "Text"
+        if ($stsTagDropdown.Items.Count -gt 0) { $stsTagDropdown.SelectedIndex = 0 }
+
+        $schanRows = Invoke-UIPlinkQuery -Sql "SELECT Label2, GFID, OrderBy FROM udc WHERE TopGFID = '10000000000000300';" -User $user -SshPass $sshPass -DbPass $dbPass
+        if ($schanRows -join "`n" -match "ERROR") { throw "Failed to fetch SChan: $schanRows" }
+        $schanItems = @()
+        foreach ($row in $schanRows) {
+            $cols = $row -split "`t"
+            if ($cols.Count -ge 2 -and -not [string]::IsNullOrWhiteSpace($cols[0])) {
+                $ob = if ($cols[2] -match '^\d+$') { [int]$cols[2].Trim() } else { 99999 }
+                $schanItems += [PSCustomObject]@{ Text=$cols[0].Trim(); SChan=$cols[1].Trim(); OrderBy=$ob }
+            }
+        }
+        $stsSchanDropdown.Items.Clear()
+        $schanItems | Sort-Object OrderBy, Text | ForEach-Object { [void]$stsSchanDropdown.Items.Add($_) }
+        $stsSchanDropdown.DisplayMember = "Text"
+        if ($stsSchanDropdown.Items.Count -gt 0) { $stsSchanDropdown.SelectedIndex = 0 }
+
+        $carrierRows = Invoke-UIPlinkQuery -Sql "SELECT Label1, GFID, OrderBy FROM udc WHERE TopGFID = '10000000000001600' AND Chk = 1;" -User $user -SshPass $sshPass -DbPass $dbPass
+        if ($carrierRows -join "`n" -match "ERROR") { throw "Failed to fetch Carriers: $carrierRows" }
+        $carrierItems = @()
+        foreach ($row in $carrierRows) {
+            $cols = $row -split "`t"
+            if ($cols.Count -ge 2 -and -not [string]::IsNullOrWhiteSpace($cols[0])) {
+                $ob = if ($cols[2] -match '^\d+$') { [int]$cols[2].Trim() } else { 99999 }
+                $carrierItems += [PSCustomObject]@{ Text=$cols[0].Trim(); Cgfid=$cols[1].Trim(); OrderBy=$ob }
+            }
+        }
+        $stsCarrierDropdown.Items.Clear()
+        $carrierItems | Sort-Object OrderBy, Text | ForEach-Object { [void]$stsCarrierDropdown.Items.Add($_) }
+        $stsCarrierDropdown.DisplayMember = "Text"
+        if ($stsCarrierDropdown.Items.Count -gt 0) { $stsCarrierDropdown.SelectedIndex = 0 }
+    } catch {
+        Write-ErrorLog -Message "Failed to sync STS options" -ErrorRecord $_
+        [System.Windows.Forms.MessageBox]::Show("Error syncing Manual options:`n`n$($_.Exception.Message)", "Sync Error", 0, 16)
+    } finally {
+        $mainForm.Enabled = $true
+        [System.Windows.Forms.Cursor]::Current = [System.Windows.Forms.Cursors]::Default
+    }
+}
+
  $bgScript = {
     param($ctx)
 
     $Config = $ctx.Config
     $LocationPids = $ctx.LocationPids
-    $TypToTag = $ctx.TypToTag
     $CountryToCarrierGfid = $ctx.CountryToCarrierGfid
     $CsvCarrierToCgfid = $ctx.CsvCarrierToCgfid
     $IntakeCarrierToCgfid = $ctx.IntakeCarrierToCgfid
-    $TagToPstr = $ctx.TagToPstr
     $PidToLoc = $ctx.PidToLoc
 
     $script:activeSshUser = $ctx.User
@@ -606,15 +574,28 @@ function Apply-Theme {
         return
     }
 
-    Update-UI "      -> ULID validated successfully.`r`n" -Status "Syncing carriers..."
-    Update-UI "      -> Syncing carrier display names from database...`r`n"
+    Update-UI "      -> ULID validated successfully.`r`n" -Status "Syncing UDC..."
+    Update-UI "      -> Syncing UDC mappings from database...`r`n"
 
+    $udcRows = Invoke-PlinkQuery -Sql "SELECT GFID, Label1, TopGFID FROM udc WHERE TopGFID IN ('14000000000000300', '10000000000001500', '10000000000001600');"
+    if ($udcRows -join "`n" -match "ERROR") { Update-UI "`r`nCRITICAL ERROR: Failed to query UDC mappings.`r`n" -AlwaysShow; return }
+    
+    $gfidToTag = @{}
+    $labelToGfid = @{}
     $cgfidToCarrier = @{}
-    $carrierRows = Invoke-PlinkQuery -Sql "SELECT GFID, Label1 FROM udc WHERE TopGFID IN ('10000000000001500', '10000000000001600');"
-    if ($carrierRows -join "`n" -match "ERROR") { Update-UI "`r`nCRITICAL ERROR: Failed to query UDC carrier mappings.`r`n" -AlwaysShow; return }
-    foreach ($row in $carrierRows) {
+    foreach ($row in $udcRows) {
         $cols = $row -split "`t"
-        if ($cols.Count -ge 2 -and -not [string]::IsNullOrWhiteSpace($cols[0])) { $cgfidToCarrier[$cols[0].Trim()] = $cols[1].Trim() }
+        if ($cols.Count -ge 3 -and -not [string]::IsNullOrWhiteSpace($cols[0])) {
+            $gfid = $cols[0].Trim()
+            $l1 = $cols[1].Trim()
+            $tg = $cols[2].Trim()
+            if ($tg -eq '14000000000000300') {
+                $gfidToTag[$gfid] = $l1
+                $labelToGfid[$l1] = $gfid
+            } elseif ($tg -eq '10000000000001600' -or $tg -eq '10000000000001500') {
+                $cgfidToCarrier[$gfid] = $l1
+            }
+        }
     }
 
     $tableData = New-Object System.Collections.Generic.List[PSCustomObject]
@@ -630,13 +611,17 @@ function Apply-Theme {
 
     if ($ctx.IsSts) {
         $selectedLoc = $ctx.StsLoc
-        $selectedCarrier = $ctx.StsCarrier
+        $selectedTriagram = $ctx.StsTriagram
         $selectedTag = $ctx.StsTag
+        $selectedSchan = $ctx.StsSchan
+        $selectedCarrier = $ctx.StsCarrier
+
+        $sulid = $ctx.StsSulid
+        $pstr = $ctx.StsTyp
+        $schan = $ctx.StsSchanVal
         $rstr = $ctx.StsCarrierCgfid
-        $pstr = $TagToPstr[$selectedTag]
+
         $activePid = $LocationPids[$selectedLoc]
-        $sulid = $Config.DefaultSulid
-        $schan = $Config.DefaultSchan
 
         Update-UI "[2/4] STS Mode: Bypassing archive scan.`r`n"
         Update-UI "[3/4] STS Mode: Bypassing DTS/Abhive sync.`r`n"
@@ -821,7 +806,7 @@ VALUES
             }
             $existing  = $existingOrders[$order.FullOrder]
             $dbLoc     = if ($PidToLoc.ContainsKey($existing.Pulid)) { $PidToLoc[$existing.Pulid] } else { "--" }
-            $dbTag     = if ($TypToTag.ContainsKey($existing.Typ)) { $TypToTag[$existing.Typ] } else { "--" }
+            $dbTag     = if ($gfidToTag.ContainsKey($existing.Typ)) { $gfidToTag[$existing.Typ] } else { "--" }
             $dbCarrier = if ($cgfidToCarrier.ContainsKey($existing.CgfId)) { $cgfidToCarrier[$existing.CgfId] } else { $existing.CgfId }
             $tableData.Add([PSCustomObject]@{ Order=$order.FullOrder; Status=$existing.Status; Loc=$dbLoc; Carrier=$dbCarrier; OD=$dbTag; Action="--"; IsNone=1 })
         }
@@ -1109,7 +1094,7 @@ VALUES
             if ($existingOrders.ContainsKey($fullOrder)) {
                 $existing  = $existingOrders[$fullOrder]
                 $dbLoc     = if ($PidToLoc[$existing.Pulid]) { $PidToLoc[$existing.Pulid] } else { "--" }
-                $dbTag     = if ($TypToTag.ContainsKey($existing.Typ)) { $TypToTag[$existing.Typ] } else { "--" }
+                $dbTag     = if ($gfidToTag.ContainsKey($existing.Typ)) { $gfidToTag[$existing.Typ] } else { "--" }
                 $dbCarrier = if ($cgfidToCarrier.ContainsKey($existing.CgfId)) { $cgfidToCarrier[$existing.CgfId] } else { $existing.CgfId }
                 if ($existing.Status -eq "10") {
                     $csvOrders.Add([PSCustomObject]@{ Order = $order.FullOrder; Loc = $dbLoc })
@@ -1155,9 +1140,9 @@ VALUES
                     continue
                 }
                 $schan = $Config.DtsSchan
-                $pstr  = "14000000000000310"
+                $pstr  = $labelToGfid["REPLEN"]
             } else {
-                $pstr = $TagToPstr[$tag]
+                $pstr = $labelToGfid[$tag]
             }
 
             if ($tag -eq "DTS") {
@@ -1352,17 +1337,10 @@ VALUES
  $menuCheckUpdate  = New-Object System.Windows.Forms.ToolStripMenuItem("Check for Update")
  $menuCheckPlink   = New-Object System.Windows.Forms.ToolStripMenuItem("Check for plink")
  $menuClearCreds   = New-Object System.Windows.Forms.ToolStripMenuItem("Clear Saved Credentials")
- $menuTools.DropDownItems.AddRange(@($menuWaveHistory, $menuCheckUpdate, (New-Object System.Windows.Forms.ToolStripSeparator), $menuCheckPlink, $menuClearCreds))
+ $menuSyncOptions  = New-Object System.Windows.Forms.ToolStripMenuItem("Sync Manual Options")
+ $menuTools.DropDownItems.AddRange(@($menuWaveHistory, $menuCheckUpdate, (New-Object System.Windows.Forms.ToolStripSeparator), $menuCheckPlink, $menuClearCreds, (New-Object System.Windows.Forms.ToolStripSeparator), $menuSyncOptions))
 
- $menuLang   = New-Object System.Windows.Forms.ToolStripMenuItem("Language")
- $menuLangEN = New-Object System.Windows.Forms.ToolStripMenuItem("English")
- $menuLangES = New-Object System.Windows.Forms.ToolStripMenuItem("Español")
- $menuLangEN.CheckOnClick = $true
- $menuLangES.CheckOnClick = $true
- $menuLangEN.Checked = $true
- $menuLang.DropDownItems.AddRange(@($menuLangEN, $menuLangES))
-
- $menuStrip.Items.AddRange(@($menuView, $menuOptions, $menuTools, $menuLang))
+ $menuStrip.Items.AddRange(@($menuView, $menuOptions, $menuTools))
  $mainForm.MainMenuStrip = $menuStrip
  $mainForm.Controls.Add($menuStrip)
 
@@ -1466,7 +1444,7 @@ VALUES
 
  $modeDropdown = New-Object System.Windows.Forms.ComboBox; $modeDropdown.Location = New-Object System.Drawing.Point(225, 500); $modeDropdown.Size = New-Object System.Drawing.Size(130, 22); $modeDropdown.DropDownStyle = [System.Windows.Forms.ComboBoxStyle]::DropDownList
  $modeDropdown.Anchor = [System.Windows.Forms.AnchorStyles]::Bottom -bor [System.Windows.Forms.AnchorStyles]::Left
- $modeDropdown.Items.AddRange(@("B2C / DTS", "Manual", "Delete", "Status Check", "Order Table"))
+ $modeDropdown.Items.AddRange(@("Automatic", "Manual", "Delete", "Status Check", "Order Table"))
  $modeDropdown.SelectedIndex = 0
 
  $stsPanel = New-Object System.Windows.Forms.Panel
@@ -1476,22 +1454,23 @@ VALUES
  $stsPanel.Anchor = [System.Windows.Forms.AnchorStyles]::Top -bor [System.Windows.Forms.AnchorStyles]::Left -bor [System.Windows.Forms.AnchorStyles]::Right
 
  $stsLocLabel = New-Object System.Windows.Forms.Label; $stsLocLabel.Location = New-Object System.Drawing.Point(0, 5); $stsLocLabel.Size = New-Object System.Drawing.Size(60, 15); $stsLocLabel.Text = "Location:"
- $stsLocDropdown = New-Object System.Windows.Forms.ComboBox; $stsLocDropdown.Location = New-Object System.Drawing.Point(0, 22); $stsLocDropdown.Size = New-Object System.Drawing.Size(100, 22); $stsLocDropdown.DropDownStyle = [System.Windows.Forms.ComboBoxStyle]::DropDownList
-
+ $stsLocDropdown = New-Object System.Windows.Forms.ComboBox; $stsLocDropdown.Location = New-Object System.Drawing.Point(0, 22); $stsLocDropdown.Size = New-Object System.Drawing.Size(70, 22); $stsLocDropdown.DropDownStyle = [System.Windows.Forms.ComboBoxStyle]::DropDownList
  $stsLocDropdown.Items.AddRange(@("NV", "MD", "TX", "ME"))
  $stsLocDropdown.SelectedIndex = 0
 
- $stsCarrierLabel = New-Object System.Windows.Forms.Label; $stsCarrierLabel.Location = New-Object System.Drawing.Point(120, 5); $stsCarrierLabel.Size = New-Object System.Drawing.Size(60, 15); $stsCarrierLabel.Text = "Carrier:"
- $stsCarrierDropdown = New-Object System.Windows.Forms.ComboBox; $stsCarrierDropdown.Location = New-Object System.Drawing.Point(120, 22); $stsCarrierDropdown.Size = New-Object System.Drawing.Size(150, 22); $stsCarrierDropdown.DropDownStyle = [System.Windows.Forms.ComboBoxStyle]::DropDownList
- $stsCarrierDropdown.Items.AddRange(@("DHL", "FedEx Air", "FEDEX GROUND", "Geodis UK", "GLOBALEF", "PURLTR EXPRS", "Shipium01", "Shipium02", "Shipium05", "TechTrans", "UPS", "UPS 2nd Day", "UPS Ground", "UPS Next Day"))
- $stsCarrierDropdown.SelectedIndex = 0
+ $stsTriagramLabel = New-Object System.Windows.Forms.Label; $stsTriagramLabel.Location = New-Object System.Drawing.Point(80, 5); $stsTriagramLabel.Size = New-Object System.Drawing.Size(60, 15); $stsTriagramLabel.Text = "Triagram:"
+ $stsTriagramDropdown = New-Object System.Windows.Forms.ComboBox; $stsTriagramDropdown.Location = New-Object System.Drawing.Point(80, 22); $stsTriagramDropdown.Size = New-Object System.Drawing.Size(70, 22); $stsTriagramDropdown.DropDownStyle = [System.Windows.Forms.ComboBoxStyle]::DropDownList
 
- $stsTagLabel = New-Object System.Windows.Forms.Label; $stsTagLabel.Location = New-Object System.Drawing.Point(290, 5); $stsTagLabel.Size = New-Object System.Drawing.Size(80, 15); $stsTagLabel.Text = "Order Type:"
- $stsTagDropdown = New-Object System.Windows.Forms.ComboBox; $stsTagDropdown.Location = New-Object System.Drawing.Point(290, 22); $stsTagDropdown.Size = New-Object System.Drawing.Size(120, 22); $stsTagDropdown.DropDownStyle = [System.Windows.Forms.ComboBoxStyle]::DropDownList
- $stsTagDropdown.Items.AddRange(@("WEB", "WEB Spc", "WEB Intl", "REPLEN", "LAUNCH", "GWP", "NEW"))
- $stsTagDropdown.SelectedIndex = 0
+ $stsTagLabel = New-Object System.Windows.Forms.Label; $stsTagLabel.Location = New-Object System.Drawing.Point(160, 5); $stsTagLabel.Size = New-Object System.Drawing.Size(70, 15); $stsTagLabel.Text = "Order Type:"
+ $stsTagDropdown = New-Object System.Windows.Forms.ComboBox; $stsTagDropdown.Location = New-Object System.Drawing.Point(160, 22); $stsTagDropdown.Size = New-Object System.Drawing.Size(110, 22); $stsTagDropdown.DropDownStyle = [System.Windows.Forms.ComboBoxStyle]::DropDownList
 
- $stsPanel.Controls.AddRange(@($stsLocLabel, $stsLocDropdown, $stsCarrierLabel, $stsCarrierDropdown, $stsTagLabel, $stsTagDropdown))
+ $stsSchanLabel = New-Object System.Windows.Forms.Label; $stsSchanLabel.Location = New-Object System.Drawing.Point(280, 5); $stsSchanLabel.Size = New-Object System.Drawing.Size(50, 15); $stsSchanLabel.Text = "SChan:"
+ $stsSchanDropdown = New-Object System.Windows.Forms.ComboBox; $stsSchanDropdown.Location = New-Object System.Drawing.Point(280, 22); $stsSchanDropdown.Size = New-Object System.Drawing.Size(120, 22); $stsSchanDropdown.DropDownStyle = [System.Windows.Forms.ComboBoxStyle]::DropDownList
+
+ $stsCarrierLabel = New-Object System.Windows.Forms.Label; $stsCarrierLabel.Location = New-Object System.Drawing.Point(410, 5); $stsCarrierLabel.Size = New-Object System.Drawing.Size(60, 15); $stsCarrierLabel.Text = "Carrier:"
+ $stsCarrierDropdown = New-Object System.Windows.Forms.ComboBox; $stsCarrierDropdown.Location = New-Object System.Drawing.Point(410, 22); $stsCarrierDropdown.Size = New-Object System.Drawing.Size(150, 22); $stsCarrierDropdown.DropDownStyle = [System.Windows.Forms.ComboBoxStyle]::DropDownList
+
+ $stsPanel.Controls.AddRange(@($stsLocLabel, $stsLocDropdown, $stsTriagramLabel, $stsTriagramDropdown, $stsTagLabel, $stsTagDropdown, $stsSchanLabel, $stsSchanDropdown, $stsCarrierLabel, $stsCarrierDropdown))
 
  $statusStrip = New-Object System.Windows.Forms.StatusStrip
  $statusStrip.SizingGrip = $false
@@ -1527,6 +1506,10 @@ VALUES
         $outputTextBox.Size = New-Object System.Drawing.Size($rightWidth, ($bottomY - 136))
         $orderGrid.Location = New-Object System.Drawing.Point(190, 136)
         $orderGrid.Size = New-Object System.Drawing.Size($rightWidth, ($bottomY - 136))
+        
+        if ($stsTriagramDropdown.Items.Count -eq 0 -and $txtUser.Text -ne "" -and $txtSshPass.Text -ne "" -and $txtDbPass.Text -ne "") {
+            Sync-STSOptions
+        }
     } else {
         $stsPanel.Visible = $false
         $outputLabel.Location = New-Object System.Drawing.Point(190, 39)
@@ -1651,8 +1634,7 @@ function Set-BatchSizeChecks {
     }
 })
 
- $menuLangEN.Add_Click({ Set-Language "EN" })
- $menuLangES.Add_Click({ Set-Language "ES" })
+ $menuSyncOptions.Add_Click({ Sync-STSOptions })
 
  $script:uiQueue = New-Object System.Collections.Concurrent.ConcurrentQueue[string]
  $script:statusQueue = New-Object System.Collections.Concurrent.ConcurrentQueue[string]
@@ -1759,11 +1741,9 @@ function Set-BatchSizeChecks {
     $ctx = @{
         Config = $script:Config
         LocationPids = $script:locationPids
-        TypToTag = $script:typToTag
         CountryToCarrierGfid = $script:countryToCarrierGfid
         CsvCarrierToCgfid = $script:csvCarrierToCgfid
         IntakeCarrierToCgfid = $script:intakeCarrierToCgfid
-        TagToPstr = $script:tagToPstr
         PidToLoc = $script:pidToLoc
 
         User     = $user
@@ -1788,10 +1768,28 @@ function Set-BatchSizeChecks {
     }
 
     if ($ctx.IsSts) {
+        if ($stsTriagramDropdown.Items.Count -eq 0) {
+            $outputTextBox.AppendText("ERROR: Manual options not synced. Please go to Tools -> Sync Manual Options.`r`n")
+            $processButton.Enabled = $true
+            return
+        }
+
+        $selectedTri = $stsTriagramDropdown.SelectedItem
+        if (-not $selectedTri -or [string]::IsNullOrWhiteSpace($selectedTri.Text)) {
+            $outputTextBox.AppendText("ERROR: Please select a Triagram.`r`n")
+            $processButton.Enabled = $true
+            return
+        }
+
         $ctx.StsLoc          = $stsLocDropdown.SelectedItem
-        $ctx.StsCarrier      = $stsCarrierDropdown.SelectedItem
-        $ctx.StsCarrierCgfid = $script:stsCarrierToCgfid[$ctx.StsCarrier]
-        $ctx.StsTag          = $stsTagDropdown.SelectedItem
+        $ctx.StsTriagram     = $selectedTri.Text
+        $ctx.StsSulid        = $selectedTri.Sulid
+        $ctx.StsTag          = $stsTagDropdown.SelectedItem.Text
+        $ctx.StsTyp          = $stsTagDropdown.SelectedItem.Typ
+        $ctx.StsSchan        = $stsSchanDropdown.SelectedItem.Text
+        $ctx.StsSchanVal     = $stsSchanDropdown.SelectedItem.SChan
+        $ctx.StsCarrier      = $stsCarrierDropdown.SelectedItem.Text
+        $ctx.StsCarrierCgfid = $stsCarrierDropdown.SelectedItem.Cgfid
     }
 
     $script:bgRunspace = [runspacefactory]::CreateRunspace()
@@ -1807,7 +1805,6 @@ function Set-BatchSizeChecks {
 
 try {
     Load-Settings
-    Set-Language $script:lang
     $menuCreateCsv.Checked   = $createCsvCheckbox.Checked
     $menuOpenCsv.Checked     = $openCsvCheckbox.Checked
     $menuOpenCsv.Enabled     = $createCsvCheckbox.Checked
@@ -1822,6 +1819,10 @@ try {
     $menuFontLarge.Checked  = ($fs -ge 11)
 
     if ($script:pendingDarkMode) { $menuDarkMode.Checked = $true; Apply-Theme $true }
+
+    if ($txtUser.Text -ne "" -and $txtSshPass.Text -ne "" -and $txtDbPass.Text -ne "" -and $stsTriagramDropdown.Items.Count -eq 0) {
+        Sync-STSOptions
+    }
 
     $mainForm.Add_FormClosing({
         Save-Settings
