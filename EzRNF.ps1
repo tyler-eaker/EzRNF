@@ -1,11 +1,11 @@
 ﻿Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
 
- $currentVersion = "1.15"
+ $currentVersion = "1.16"
  $rawBase        = "https://raw.githubusercontent.com/tyler-eaker/EzRNF/main"
  $scriptPath     = $MyInvocation.MyCommand.Path
 
- Write-Host "EzRNF Version $currentVersion"
+Write-Host "EzRNF Version $currentVersion"
 
 function Invoke-UpdateCheck {
     param([switch]$ManualCheck)
@@ -640,16 +640,23 @@ function Sync-STSOptions {
             return
         }
         $inClause = "'" + ($safeBases -join "','") + "'"
-        $dbRows = Invoke-PlinkQuery -Sql "SELECT ID, BO, Status FROM rdvorderhead WHERE ID IN ($inClause);"
+        $dbRows = Invoke-PlinkQuery -Sql "SELECT rdvorderhead.ID, rdvorderhead.BO, rdvorderhead.Status, rdvorderhead.PULID, rdvorderhead.Typ, rdvorderhead.CGFID, schan_udc.Label2 as SChan, abhive.HID as Tri FROM rdvorderhead LEFT JOIN udc as schan_udc ON rdvorderhead.SChan = schan_udc.GFID LEFT JOIN abhive ON rdvorderhead.SULID = abhive.ULID WHERE rdvorderhead.ID IN ($inClause);"
         if ($dbRows -join "`n" -match "ERROR") { Update-UI "`r`nCRITICAL ERROR: Failed to query existing DB statuses.`r`n" -AlwaysShow; return }
         foreach ($row in $dbRows) {
             $cols = $row -split "`t"
-            if ($cols.Count -ge 2 -and -not [string]::IsNullOrWhiteSpace($cols[0])) {
+            if ($cols.Count -ge 8 -and -not [string]::IsNullOrWhiteSpace($cols[0])) {
                 $dbId = $cols[0].Trim()
                 $dbBo = $cols[1].Trim()
                 $boSuffix = if ($dbBo -match '^\d+$') { "{0:D2}" -f [int]$dbBo } else { "00" }
                 $fullOrderKey = "$dbId-$boSuffix"
-                $existingOrders[$fullOrderKey] = @{ Status = $cols[2].Trim() }
+                $existingOrders[$fullOrderKey] = @{ 
+                    Status = $cols[2].Trim()
+                    Pulid = $cols[3].Trim()
+                    Typ = $cols[4].Trim()
+                    CgfId = $cols[5].Trim()
+                    SChan = $cols[6].Trim()
+                    Tri = $cols[7].Trim()
+                }
             }
         }
 
@@ -659,12 +666,16 @@ function Sync-STSOptions {
         foreach ($order in $parsedOrders) {
             $base = $order.Base
             if ($existingOrders.ContainsKey($order.FullOrder)) {
-                $status = $existingOrders[$order.FullOrder].Status
-                if ($status -eq "10") {
-                    $tableData.Add([PSCustomObject]@{ Order=$order.FullOrder; Status="10"; Loc=$selectedLoc; Carrier=$selectedCarrier; Tri=$selectedTriagram; OT=$selectedTag; SChan=$selectedSchan; Action="Already in Wave"; IsNone=1 })
+                $existing = $existingOrders[$order.FullOrder]
+                $dbLoc = if ($PidToLoc.ContainsKey($existing.Pulid)) { $PidToLoc[$existing.Pulid] } else { "--" }
+                $dbTag = if ($gfidToTag.ContainsKey($existing.Typ)) { $gfidToTag[$existing.Typ] } else { "--" }
+                $dbCarrier = if ($cgfidToCarrier.ContainsKey($existing.CgfId)) { $cgfidToCarrier[$existing.CgfId] } else { $existing.CgfId }
+
+                if ($existing.Status -eq "10") {
+                    $tableData.Add([PSCustomObject]@{ Order=$order.FullOrder; Status="10"; Loc=$dbLoc; Carrier=$dbCarrier; Tri=$existing.Tri; OT=$dbTag; SChan=$existing.SChan; Action="Already in Wave"; IsNone=1 })
                     $inWaveCount++
                 } else {
-                    $tableData.Add([PSCustomObject]@{ Order=$order.FullOrder; Status=$status; Loc=$selectedLoc; Carrier=$selectedCarrier; Tri=$selectedTriagram; OT=$selectedTag; SChan=$selectedSchan; Action="None"; IsNone=0 })
+                    $tableData.Add([PSCustomObject]@{ Order=$order.FullOrder; Status=$existing.Status; Loc=$dbLoc; Carrier=$dbCarrier; Tri=$existing.Tri; OT=$dbTag; SChan=$existing.SChan; Action="None"; IsNone=0 })
                 }
                 continue
             }
@@ -702,6 +713,105 @@ VALUES
         foreach ($p in $tableData) {
             if ($p.Action -eq "WAVED" -or $p.Action -eq "Already in Wave") {
                 $csvOrders.Add([PSCustomObject]@{ Order = $p.Order; Loc = $p.Loc })
+            }
+        }
+    } elseif ($ctx.IsReWave) {
+        Update-UI "[2/4] Re-wave Mode: Bypassing archive scan.`r`n"
+        Update-UI "[3/4] Re-wave Mode: Bypassing DTS/Abhive sync.`r`n"
+        Update-UI "[4/4] Processing re-wave operations... " -Status "Executing DB operations..."
+
+        $existingOrders = @{}
+        $safeBases = $parsedOrders.Base | Where-Object { $_ -match '^\d{8}$|^1\d{9}$|^3\d{11}$' } | Select-Object -Unique
+        if (@($safeBases).Count -eq 0) {
+            Update-UI "`r`nERROR: No valid order numbers found for database query.`r`n" -AlwaysShow
+            return
+        }
+        $inClause = "'" + ($safeBases -join "','") + "'"
+        $dbRows = Invoke-PlinkQuery -Sql "SELECT rdvorderhead.ID, rdvorderhead.BO, rdvorderhead.Status, rdvorderhead.PULID, rdvorderhead.Typ, rdvorderhead.CGFID, rdvorderhead.SChan, rdvorderhead.SULID, rdvorderhead.GFID, schan_udc.Label2 as SChanName, abhive.HID as TriName FROM rdvorderhead LEFT JOIN udc as schan_udc ON rdvorderhead.SChan = schan_udc.GFID LEFT JOIN abhive ON rdvorderhead.SULID = abhive.ULID WHERE rdvorderhead.ID IN ($inClause);"
+        if ($dbRows -join "`n" -match "ERROR") { Update-UI "`r`nCRITICAL ERROR: Failed to query DB statuses.`r`n" -AlwaysShow; return }
+
+        foreach ($row in $dbRows) {
+            $cols = $row -split "`t"
+            if ($cols.Count -ge 11 -and -not [string]::IsNullOrWhiteSpace($cols[0])) {
+                $dbId     = $cols[0].Trim()
+                $dbBo     = $cols[1].Trim()
+                $boSuffix = if ($dbBo -match '^\d+$') { "{0:D2}" -f [int]$dbBo } else { "00" }
+                $existingOrders["$dbId-$boSuffix"] = @{
+                    Status=$cols[2].Trim(); Pulid=$cols[3].Trim(); Typ=$cols[4].Trim(); CgfId=$cols[5].Trim()
+                    SChan=$cols[6].Trim(); Sulid=$cols[7].Trim(); Gfid=$cols[8].Trim(); SChanName=$cols[9].Trim(); TriName=$cols[10].Trim()
+                }
+            }
+        }
+
+        $pendingReWaves = New-Object System.Collections.Generic.List[PSCustomObject]
+        $insertCounter = 0
+
+        foreach ($order in $parsedOrders) {
+            if (-not $existingOrders.ContainsKey($order.FullOrder)) {
+                $tableData.Add([PSCustomObject]@{ Order=$order.FullOrder; Status="RNF"; Loc="--"; Carrier="--"; Tri="--"; OT="--"; SChan="--"; Action="Not Found"; IsNone=1 })
+                continue
+            }
+            $existing = $existingOrders[$order.FullOrder]
+            $dbLoc     = if ($PidToLoc.ContainsKey($existing.Pulid)) { $PidToLoc[$existing.Pulid] } else { "--" }
+            $dbTag     = if ($gfidToTag.ContainsKey($existing.Typ)) { $gfidToTag[$existing.Typ] } else { "--" }
+            $dbCarrier = if ($cgfidToCarrier.ContainsKey($existing.CgfId)) { $cgfidToCarrier[$existing.CgfId] } else { $existing.CgfId }
+            
+                        $pendingReWaves.Add([PSCustomObject]@{ 
+                Order=$order.FullOrder; Base=$order.Base; Suffix=$order.Suffix; Gfid=$existing.Gfid; Status=[int]$existing.Status
+                Loc=$dbLoc; Carrier=$dbCarrier; Tri=$existing.TriName; OT=$dbTag; SChan=$existing.SChanName
+                Pulid=$existing.Pulid; Typ=$existing.Typ; SChanVal=$existing.SChan; Sulid=$existing.Sulid; CgfId=$existing.CgfId
+            })
+        }
+
+        if ($pendingReWaves.Count -gt 0) {
+            Update-UI " Deleting and re-waving $($pendingReWaves.Count) order(s)..."
+
+            $needCartonDelete = @($pendingReWaves | Where-Object { $_.Status -ge 20 })
+            if ($needCartonDelete.Count -gt 0) {
+                $gfids = "'" + (($needCartonDelete | Select-Object -ExpandProperty Gfid) -join "','") + "'"
+                $cartonResult = Invoke-PlinkQuery -Sql "DELETE FROM rdvcartonhead WHERE OGFID IN ($gfids);"
+                if ($cartonResult -join "`n" -match "ERROR") {
+                    Update-UI "`r`nSQL ERROR deleting cartons: $($cartonResult -join "`n")`r`n" -AlwaysShow
+                    foreach ($p in $pendingReWaves) { $tableData.Add([PSCustomObject]@{ Order=$p.Order; Status=$p.Status; Loc=$p.Loc; Carrier=$p.Carrier; Tri=$p.Tri; OT=$p.OT; SChan=$p.SChan; Action="FAILED (Carton Error)"; IsNone=1 }) }
+                    $pendingReWaves.Clear()
+                }
+            }
+
+            if ($pendingReWaves.Count -gt 0) {
+                $deleteGfids = "'" + (($pendingReWaves | Select-Object -ExpandProperty Gfid) -join "','") + "'"
+                $deleteResult = Invoke-PlinkQuery -Sql "DELETE FROM rdvorderhead WHERE GFID IN ($deleteGfids);"
+                if ($deleteResult -join "`n" -match "ERROR") {
+                    Update-UI "`r`nSQL ERROR deleting orders: $($deleteResult -join "`n")`r`n" -AlwaysShow
+                    foreach ($p in $pendingReWaves) { $tableData.Add([PSCustomObject]@{ Order=$p.Order; Status=$p.Status; Loc=$p.Loc; Carrier=$p.Carrier; Tri=$p.Tri; OT=$p.OT; SChan=$p.SChan; Action="FAILED (SQL Delete)"; IsNone=1 }) }
+                } else {
+                    $pendingInserts = New-Object System.Collections.Generic.List[PSCustomObject]
+                    foreach ($p in $pendingReWaves) {
+                        $insertCounter++
+                        $safeGfid = "305" + (Get-Date -Format "yyMMddHHmmss") + "{0:D3}" -f $insertCounter
+                        $boInt = [int]$p.Suffix
+                        $insertQuery = @"
+INSERT INTO rdvorderhead
+(GFID, PULID, Brand, ID, ID2, BO, SChan, SULID, PGFID, OrderHostCode, PricePfx, PriceSfx, Typ, PO, Customer, BillToCode, ShipTo, ShipToCode, CtnQty, LnQty, ItemQty, CtnPicked, CtnPacked, UnixOrder, UnixPickup, UnixShip, UnixDelivery, CGFID, Tracking, Note, Msg, Confirmed, Status, UnixCreated, CreatedBy, UnixDropped, DroppedBy, UnixShipped, ShippedBy, UnixLast, LastBy, LastFGFID)
+VALUES
+('$safeGfid', '$($p.Pulid)', '$($Config.BrandGfid)', '$($p.Base)', '', '$boInt', '$($p.SChanVal)', '$($p.Sulid)', '0', '', '', '', '$($p.Typ)', '', '', '', '', '', '0', '0', '0', '0', '0', '$unixMidnightUtc', '$unixMidnightUtc', '0', '$unixMidnightUtc', '$($p.CgfId)', '', '', '', '0', '10', '$unixCurrentTime', '$userUlid', '0', '', '0', '', '0', '', '0');
+"@
+                        $pendingInserts.Add([PSCustomObject]@{ Query=$insertQuery; Data=$p })
+                    }
+
+                    $batchSql = ($pendingInserts | Select-Object -ExpandProperty Query) -join "`n"
+                    $batchResult = Invoke-PlinkQuery -Sql $batchSql
+                    if ($batchResult -join "`n" -match "ERROR") {
+                        Update-UI "`r`nSQL ERROR: $($batchResult -join "`n")`r`n" -AlwaysShow
+                        foreach ($p in $pendingInserts) { $tableData.Add([PSCustomObject]@{ Order=$p.Data.Order; Status="RNF"; Loc=$p.Data.Loc; Carrier=$p.Data.Carrier; Tri=$p.Data.Tri; OT=$p.Data.OT; SChan=$p.Data.SChan; Action="FAILED (SQL Insert)"; IsNone=1 }) }
+                    } else {
+                        foreach ($p in $pendingInserts) {
+                            $csvOrders.Add([PSCustomObject]@{ Order = $p.Data.Order; Loc = $p.Data.Loc })
+                            $tableData.Add([PSCustomObject]@{ Order=$p.Data.Order; Status="10"; Loc=$p.Data.Loc; Carrier=$p.Data.Carrier; Tri=$p.Data.Tri; OT=$p.Data.OT; SChan=$p.Data.SChan; Action="RE-WAVED"; IsNone=1 })
+                            $wavedCount++
+                            $locationsUsed.Add($p.Data.Loc)
+                        }
+                    }
+                }
             }
         }
     } elseif ($ctx.IsDelete) {
@@ -1232,7 +1342,7 @@ VALUES
 
     if (-not $ctx.IsOrderTable) {
         $lineFormat = " {0,-3} | {1,-16} | {2,-6} | {3,-5} | {4,-9} | {5,-5} | {6,-18} | {7}`r`n"
-        $headerLine = $lineFormat -f "Loc", "Order #", "Status", "Tri", "OT", "SChan", "Carrier", "Action"
+        $headerLine = $lineFormat -f "Loc", "Order #", "Status", "Tri", "Type", "SChan", "Carrier", "Action"
         $separator  = " " + ("-" * 3) + "-+-" + ("-" * 16) + "-+-" + ("-" * 6) + "-+-" + ("-" * 5) + "-+-" + ("-" * 9) + "-+-" + ("-" * 5) + "-+-" + ("-" * 18) + "-+-" + ("-" * 20) + "`r`n"
         
         Update-UI $headerLine
@@ -1276,7 +1386,10 @@ VALUES
                 "Unknown WH"                  { $cleanAction = "UNKNOWN WH" }
                 "FAILED (SQL Error)"          { $cleanAction = "FAILED (SQL)" }
                 "FAILED (Carton Error)"       { $cleanAction = "FAILED (CTN)" }
+                "FAILED (SQL Delete)"         { $cleanAction = "FAILED (DEL)" }
+                "FAILED (SQL Insert)"         { $cleanAction = "FAILED (INS)" }
                 "Cannot Delete (Not in Wave)" { $cleanAction = "CANT DELETE" }
+                "RE-WAVED"                    { $cleanAction = "RE-WAVED" }
                 default                       { $cleanAction = $row.Action.ToUpper() }
             }
             Update-UI ($lineFormat -f $row.Loc, $row.Order, $row.Status, $row.Tri, $row.OT, $row.SChan, $row.Carrier, $cleanAction)
@@ -1293,6 +1406,9 @@ VALUES
         if ($ctx.IsDelete) {
             $notFoundCount = @($tableData | Where-Object { $_.Action -eq 'Not Found' }).Count
             Update-UI ("  DELETED: $deletedCount  |  CANNOT DELETE: $skippedCount  |  NOT FOUND: $notFoundCount  |  ERRORS: $failedCount`r`n")
+        } elseif ($ctx.IsReWave) {
+            $notFoundCount = @($tableData | Where-Object { $_.Action -eq 'Not Found' }).Count
+            Update-UI ("  RE-WAVED: $wavedCount  |  NOT FOUND: $notFoundCount  |  ERRORS: $failedCount`r`n")
         } elseif ($ctx.IsStatusCheck) {
             $foundCount = @($tableData | Where-Object { $_.Status -ne "RNF" }).Count
             $notFound   = @($tableData | Where-Object { $_.Status -eq "RNF" }).Count
@@ -1322,7 +1438,7 @@ VALUES
 
     Save-History -TotalOrders $parsedOrders.Count -Waved $wavedCount -AlreadyInWave $inWaveCount -Locations ($locationsUsed.ToArray())
 
-    $lastRunData = @($sortedData | Where-Object { $_.Action -match "(?i)WAVED|Add(ed)? to CSV|In Wave|Already in Wave" } | Select-Object Order, Loc)
+    $lastRunData = @($sortedData | Where-Object { $_.Action -match "(?i)WAVED|RE-WAVED|Add(ed)? to CSV|In Wave|Already in Wave" } | Select-Object Order, Loc)
     $resultQueue.Enqueue(@{ LastRunData = $lastRunData })
 }
 
@@ -1498,7 +1614,7 @@ VALUES
 
  $modeDropdown = New-Object System.Windows.Forms.ComboBox; $modeDropdown.Location = New-Object System.Drawing.Point(225, 500); $modeDropdown.Size = New-Object System.Drawing.Size(130, 22); $modeDropdown.DropDownStyle = [System.Windows.Forms.ComboBoxStyle]::DropDownList
  $modeDropdown.Anchor = [System.Windows.Forms.AnchorStyles]::Bottom -bor [System.Windows.Forms.AnchorStyles]::Left
- $modeDropdown.Items.AddRange(@("B2C / DTS", "Manual", "Delete", "Status Check", "Order Table"))
+ $modeDropdown.Items.AddRange(@("Automatic", "Manual", "Re-wave", "Delete", "Status Check", "Order Table"))
  $modeDropdown.SelectedIndex = 0
 
  $stsPanel = New-Object System.Windows.Forms.Panel
@@ -1815,6 +1931,7 @@ function Set-BatchSizeChecks {
         resultQueue = $script:resultQueue
 
         IsSts         = ($modeDropdown.SelectedItem -eq "Manual")
+        IsReWave      = ($modeDropdown.SelectedItem -eq "Re-wave")
         IsDelete      = ($modeDropdown.SelectedItem -eq "Delete")
         OverrideWave  = ($modeDropdown.SelectedItem -eq "Delete" -and $chkOverride.Checked)
         IsStatusCheck = ($modeDropdown.SelectedItem -eq "Status Check")
