@@ -1,7 +1,7 @@
 ﻿Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
 
- $currentVersion = "1.16"
+ $currentVersion = "1.17"
  $rawBase        = "https://raw.githubusercontent.com/tyler-eaker/EzRNF/main"
  $scriptPath     = $MyInvocation.MyCommand.Path
 
@@ -1629,16 +1629,16 @@ VALUES
  $stsLocDropdown.SelectedIndex = 0
 
  $stsTriagramLabel = New-Object System.Windows.Forms.Label; $stsTriagramLabel.Location = New-Object System.Drawing.Point(80, 5); $stsTriagramLabel.Size = New-Object System.Drawing.Size(60, 15); $stsTriagramLabel.Text = "Triagram:"
- $stsTriagramDropdown = New-Object System.Windows.Forms.ComboBox; $stsTriagramDropdown.Location = New-Object System.Drawing.Point(80, 22); $stsTriagramDropdown.Size = New-Object System.Drawing.Size(70, 22); $stsTriagramDropdown.DropDownStyle = [System.Windows.Forms.ComboBoxStyle]::DropDownList
+ $stsTriagramDropdown = New-Object System.Windows.Forms.ComboBox; $stsTriagramDropdown.MaxDropDownItems = 25; $stsTriagramDropdown.Location = New-Object System.Drawing.Point(80, 22); $stsTriagramDropdown.Size = New-Object System.Drawing.Size(70, 22); $stsTriagramDropdown.DropDownStyle = [System.Windows.Forms.ComboBoxStyle]::DropDownList
 
  $stsTagLabel = New-Object System.Windows.Forms.Label; $stsTagLabel.Location = New-Object System.Drawing.Point(160, 5); $stsTagLabel.Size = New-Object System.Drawing.Size(70, 15); $stsTagLabel.Text = "Order Type:"
- $stsTagDropdown = New-Object System.Windows.Forms.ComboBox; $stsTagDropdown.Location = New-Object System.Drawing.Point(160, 22); $stsTagDropdown.Size = New-Object System.Drawing.Size(110, 22); $stsTagDropdown.DropDownStyle = [System.Windows.Forms.ComboBoxStyle]::DropDownList
+ $stsTagDropdown = New-Object System.Windows.Forms.ComboBox; $stsTagDropdown.MaxDropDownItems = 25; $stsTagDropdown.Location = New-Object System.Drawing.Point(160, 22); $stsTagDropdown.Size = New-Object System.Drawing.Size(110, 22); $stsTagDropdown.DropDownStyle = [System.Windows.Forms.ComboBoxStyle]::DropDownList
 
  $stsSchanLabel = New-Object System.Windows.Forms.Label; $stsSchanLabel.Location = New-Object System.Drawing.Point(280, 5); $stsSchanLabel.Size = New-Object System.Drawing.Size(50, 15); $stsSchanLabel.Text = "SChan:"
- $stsSchanDropdown = New-Object System.Windows.Forms.ComboBox; $stsSchanDropdown.Location = New-Object System.Drawing.Point(280, 22); $stsSchanDropdown.Size = New-Object System.Drawing.Size(120, 22); $stsSchanDropdown.DropDownStyle = [System.Windows.Forms.ComboBoxStyle]::DropDownList
+ $stsSchanDropdown = New-Object System.Windows.Forms.ComboBox; $stsSchanDropdown.MaxDropDownItems = 25; $stsSchanDropdown.Location = New-Object System.Drawing.Point(280, 22); $stsSchanDropdown.Size = New-Object System.Drawing.Size(120, 22); $stsSchanDropdown.DropDownStyle = [System.Windows.Forms.ComboBoxStyle]::DropDownList
 
  $stsCarrierLabel = New-Object System.Windows.Forms.Label; $stsCarrierLabel.Location = New-Object System.Drawing.Point(410, 5); $stsCarrierLabel.Size = New-Object System.Drawing.Size(60, 15); $stsCarrierLabel.Text = "Carrier:"
- $stsCarrierDropdown = New-Object System.Windows.Forms.ComboBox; $stsCarrierDropdown.Location = New-Object System.Drawing.Point(410, 22); $stsCarrierDropdown.Size = New-Object System.Drawing.Size(150, 22); $stsCarrierDropdown.DropDownStyle = [System.Windows.Forms.ComboBoxStyle]::DropDownList
+ $stsCarrierDropdown = New-Object System.Windows.Forms.ComboBox; $stsCarrierDropdown.MaxDropDownItems = 25; $stsCarrierDropdown.Location = New-Object System.Drawing.Point(410, 22); $stsCarrierDropdown.Size = New-Object System.Drawing.Size(150, 22); $stsCarrierDropdown.DropDownStyle = [System.Windows.Forms.ComboBoxStyle]::DropDownList
 
  $stsPanel.Controls.AddRange(@($stsLocLabel, $stsLocDropdown, $stsTriagramLabel, $stsTriagramDropdown, $stsTagLabel, $stsTagDropdown, $stsSchanLabel, $stsSchanDropdown, $stsCarrierLabel, $stsCarrierDropdown))
 
